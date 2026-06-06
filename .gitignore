@@ -1,0 +1,20 @@
+# secrets / local config (never commit real keys)
+backend/.env
+firmware/src/config.h
+
+# personal data — per-pet memory & chat history
+backend/data/
+
+# dependencies / build artifacts
+backend/node_modules/
+firmware/.pio/
+tools/venv/
+**/__pycache__/
+*.pyc
+
+# large distributables — ship these via GitHub Releases, not git
+dist/
+
+# os
+.DS_Store
+Thumbs.db

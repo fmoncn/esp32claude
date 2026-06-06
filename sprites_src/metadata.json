@@ -1,0 +1,214 @@
+{
+  "frame_w": 64,
+  "frame_h": 72,
+  "batches": {
+    "all": [
+      "idle",
+      "walking",
+      "running",
+      "jumping",
+      "flying",
+      "landing",
+      "blast",
+      "chest_blast",
+      "missile_launch",
+      "laser_attack",
+      "charging",
+      "victory",
+      "low_battery",
+      "damaged",
+      "repairing",
+      "upgrading",
+      "dancing",
+      "eating",
+      "drinking",
+      "sleeping",
+      "exercising",
+      "reading",
+      "playing",
+      "waving",
+      "hugging",
+      "giving_heart",
+      "romantic",
+      "happy",
+      "sad",
+      "angry",
+      "surprised",
+      "thinking",
+      "sleepy",
+      "in_love"
+    ]
+  },
+  "actions": {
+    "idle": {
+      "frames": 6,
+      "fps": 6,
+      "loop": true
+    },
+    "walking": {
+      "frames": 6,
+      "fps": 10,
+      "loop": true
+    },
+    "running": {
+      "frames": 6,
+      "fps": 14,
+      "loop": true
+    },
+    "jumping": {
+      "frames": 6,
+      "fps": 9,
+      "loop": false
+    },
+    "flying": {
+      "frames": 6,
+      "fps": 10,
+      "loop": true
+    },
+    "landing": {
+      "frames": 6,
+      "fps": 9,
+      "loop": false
+    },
+    "blast": {
+      "frames": 6,
+      "fps": 10,
+      "loop": false
+    },
+    "chest_blast": {
+      "frames": 8,
+      "fps": 9,
+      "loop": false
+    },
+    "missile_launch": {
+      "frames": 6,
+      "fps": 10,
+      "loop": false
+    },
+    "laser_attack": {
+      "frames": 6,
+      "fps": 10,
+      "loop": false
+    },
+    "charging": {
+      "frames": 8,
+      "fps": 10,
+      "loop": true
+    },
+    "victory": {
+      "frames": 6,
+      "fps": 8,
+      "loop": false
+    },
+    "low_battery": {
+      "frames": 6,
+      "fps": 4,
+      "loop": true
+    },
+    "damaged": {
+      "frames": 6,
+      "fps": 12,
+      "loop": true
+    },
+    "repairing": {
+      "frames": 6,
+      "fps": 8,
+      "loop": false
+    },
+    "upgrading": {
+      "frames": 8,
+      "fps": 10,
+      "loop": false
+    },
+    "dancing": {
+      "frames": 8,
+      "fps": 10,
+      "loop": true
+    },
+    "eating": {
+      "frames": 6,
+      "fps": 7,
+      "loop": false
+    },
+    "drinking": {
+      "frames": 6,
+      "fps": 7,
+      "loop": false
+    },
+    "sleeping": {
+      "frames": 6,
+      "fps": 4,
+      "loop": true
+    },
+    "exercising": {
+      "frames": 6,
+      "fps": 8,
+      "loop": true
+    },
+    "reading": {
+      "frames": 6,
+      "fps": 4,
+      "loop": true
+    },
+    "playing": {
+      "frames": 6,
+      "fps": 9,
+      "loop": true
+    },
+    "waving": {
+      "frames": 6,
+      "fps": 10,
+      "loop": false
+    },
+    "hugging": {
+      "frames": 6,
+      "fps": 7,
+      "loop": true
+    },
+    "giving_heart": {
+      "frames": 6,
+      "fps": 7,
+      "loop": false
+    },
+    "romantic": {
+      "frames": 6,
+      "fps": 6,
+      "loop": true
+    },
+    "happy": {
+      "frames": 6,
+      "fps": 9,
+      "loop": true
+    },
+    "sad": {
+      "frames": 6,
+      "fps": 5,
+      "loop": true
+    },
+    "angry": {
+      "frames": 6,
+      "fps": 14,
+      "loop": true
+    },
+    "surprised": {
+      "frames": 6,
+      "fps": 9,
+      "loop": false
+    },
+    "thinking": {
+      "frames": 6,
+      "fps": 5,
+      "loop": true
+    },
+    "sleepy": {
+      "frames": 6,
+      "fps": 5,
+      "loop": true
+    },
+    "in_love": {
+      "frames": 6,
+      "fps": 7,
+      "loop": true
+    }
+  }
+}

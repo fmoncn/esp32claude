@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>小豆丁 · Cardputer 屏幕模拟器</title>
+<style>
+  :root{--red:#cc0e1a;--gold:#ffc83a;--cyan:#37c4ff;}
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100vh;background:radial-gradient(1200px 700px at 50% -10%,#16212f,#05070d 60%);
+    color:#dbe6f0;font:14px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;display:flex;flex-direction:column;align-items:center;gap:14px;padding:24px 16px 56px}
+  h1{font-size:14px;letter-spacing:.16em;margin:0;color:#9fb3c8;text-transform:uppercase}h1 b{color:var(--gold)}
+  .device{padding:18px 18px 22px;border-radius:18px;background:linear-gradient(180deg,#e7c23a,#caa028);
+    box-shadow:0 24px 60px -20px #000,inset 0 2px 0 #fff6,inset 0 -3px 8px #0004;position:relative}
+  .device::after{content:"M5Cardputer · 小豆丁";position:absolute;left:20px;bottom:6px;font-size:9px;color:#7a5e10;letter-spacing:.1em}
+  .screen{padding:8px;border-radius:8px;background:#111;box-shadow:inset 0 0 0 2px #000,inset 0 0 18px #000}
+  canvas{width:720px;height:405px;display:block;image-rendering:pixelated;border-radius:4px}
+  .bar{display:flex;gap:8px;width:720px;max-width:92vw;align-items:center}
+  input[type=text]{flex:1;font:inherit;font-size:13px;color:#eaf2fb;background:#0f1620;border:1px solid #2a3a4c;border-radius:9px;padding:9px 12px}
+  input[type=text]:focus{outline:none;border-color:var(--cyan)}
+  .send{font:inherit;font-size:13px;cursor:pointer;color:#1a1205;font-weight:700;background:linear-gradient(90deg,var(--red),var(--gold));border:none;border-radius:9px;padding:9px 16px}
+  .rows{display:flex;flex-direction:column;gap:8px;width:720px;max-width:92vw}
+  .row{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+  .row .lab{width:54px;color:#7d8da0;font-size:12px}
+  button.ctl{font:inherit;font-size:12px;cursor:pointer;color:#cdd9e5;background:#141b25;border:1px solid #283545;border-radius:8px;padding:5px 9px}
+  button.ctl:hover{border-color:var(--gold);color:#fff}
+  button.ctl.on{background:#13507a;border-color:var(--cyan);color:#fff}
+  .status{font-size:12px;color:#67788c}.status b{color:var(--cyan)}
+  .keys{font-size:11px;color:#5a6b7d}.keys b{color:#8fa3b6}
+</style>
+</head>
+<body>
+  <h1>小豆丁 · <b>Cardputer 屏幕模拟器</b></h1>
+  <div class="device"><div class="screen"><canvas id="c" width="240" height="135"></canvas></div></div>
+  <div class="bar">
+    <input id="msg" type="text" placeholder="跟小豆丁说点什么…(回车发送 · 和设备同一只、共享记忆)" />
+    <button class="send" id="send">发送</button>
+  </div>
+  <div class="rows">
+    <div class="row"><span class="lab">情绪</span>
+      <button class="ctl emo" data-emo="happy">😄开心</button><button class="ctl emo" data-emo="sad">😢难过</button>
+      <button class="ctl emo" data-emo="angry">😠生气</button><button class="ctl emo" data-emo="surprised">😲惊讶</button>
+      <button class="ctl emo" data-emo="thinking">🤔思考</button><button class="ctl emo" data-emo="sleepy">😴困</button>
+      <button class="ctl emo" data-emo="in_love">😍恋爱</button><button class="ctl emo" data-emo="excited">🤩兴奋</button>
+    </div>
+    <div class="row"><span class="lab">大招</span>
+      <button class="ctl act" data-act="blast">能量炮</button><button class="ctl act" data-act="chest_blast">核心光束</button>
+      <button class="ctl act" data-act="missile_launch">导弹</button><button class="ctl act" data-act="laser_attack">激光</button>
+      <button class="ctl act" data-act="flying">飞行</button><button class="ctl act" data-act="dancing">跳舞</button>
+      <button class="ctl act" data-act="victory">胜利</button>
+    </div>
+    <div class="row"><span class="lab">控制</span>
+      <button class="ctl" id="pageUp">▲ 上翻</button><button class="ctl" id="pageDn">▼ 下翻</button>
+      <button class="ctl" id="voice">🔇 语音回复:关</button>
+      <button class="ctl" id="roam">🚶 自主漫游:开</button>
+    </div>
+    <div class="status" id="status"></div>
+    <div class="keys">设备键位 → 发送:<b>Enter</b> · 翻页:<b>Fn+,</b>/<b>Fn+.</b> · 说话:<b>按住 Opt</b> · 语音开关:<b>Fn+V</b> · 大招:<b>Fn+1~0</b></div>
+  </div>
+<script>
+const BACKEND="http://localhost:8787", PET_ID="dabao";
+const cv=document.getElementById('c'), ctx=cv.getContext('2d');
+const msgEl=document.getElementById('msg'), statusEl=document.getElementById('status');
+
+const ACTIONS={
+ idle:{frames:6,fps:6,loop:1}, walking:{frames:6,fps:10,loop:1}, running:{frames:6,fps:14,loop:1},
+ jumping:{frames:6,fps:9,loop:0}, flying:{frames:6,fps:10,loop:1}, landing:{frames:6,fps:9,loop:0},
+ blast:{frames:6,fps:10,loop:0}, chest_blast:{frames:8,fps:9,loop:0}, missile_launch:{frames:6,fps:10,loop:0},
+ laser_attack:{frames:6,fps:10,loop:0}, charging:{frames:8,fps:10,loop:1}, victory:{frames:6,fps:8,loop:0},
+ low_battery:{frames:6,fps:4,loop:1}, damaged:{frames:6,fps:12,loop:1}, repairing:{frames:6,fps:8,loop:0},
+ upgrading:{frames:8,fps:10,loop:0}, dancing:{frames:8,fps:10,loop:1}, eating:{frames:6,fps:7,loop:0},
+ drinking:{frames:6,fps:7,loop:0}, sleeping:{frames:6,fps:4,loop:1}, exercising:{frames:6,fps:8,loop:1},
+ reading:{frames:6,fps:4,loop:1}, playing:{frames:6,fps:9,loop:1}, waving:{frames:6,fps:10,loop:0},
+ hugging:{frames:6,fps:7,loop:1}, giving_heart:{frames:6,fps:7,loop:0}, romantic:{frames:6,fps:6,loop:1},
+ happy:{frames:6,fps:9,loop:1}, sad:{frames:6,fps:5,loop:1}, angry:{frames:6,fps:14,loop:1},
+ surprised:{frames:6,fps:9,loop:0}, thinking:{frames:6,fps:5,loop:1}, sleepy:{frames:6,fps:5,loop:1}, in_love:{frames:6,fps:7,loop:1},
+};
+const sheets={};
+for(const n of Object.keys(ACTIONS)){const im=new Image();im.src='sheets/'+n+'.png';sheets[n]=im;}
+
+function emotionToAction(e){
+ if(e==='happy')return'happy';if(e==='sad')return'sad';if(e==='angry')return'angry';
+ if(e==='surprised')return'surprised';if(e==='thinking')return'thinking';if(e==='sleepy')return'sleepy';
+ if(e==='love'||e==='in_love')return'in_love';if(e==='excited')return'victory';return'idle';}
+const rand=a=>a[Math.floor(Math.random()*a.length)];
+function pickActivity(h){
+ if(h<7||h>=23)return'sleeping';
+ if(h===8||h===12||h===18)return Math.random()<0.6?'eating':'idle';
+ if((h>=9&&h<12)||(h>=14&&h<18))return rand(['reading','thinking','playing','idle','drinking']);
+ if(h>=19&&h<21)return rand(['exercising','dancing','idle']);
+ if(h>=21)return rand(['playing','idle','waving']);
+ return rand(['idle','waving','playing']);}
+
+// ---- 角色状态 ----
+let action='idle', actionStart=performance.now(), actionDone=false;
+let transientAction='', transientUntil=0;
+let roamX=120, facing=1, roamMode='act', roamUntil=0, targetX=120, roamOn=true;
+let reply='我在,主人。', petName='小豆丁', replyLines=[], scrollTop=0, voiceOn=false;
+const GROUND=90, ZOOM=1.15, VIS=3, LH=13, BAR_Y=96;
+
+function setAction(a){if(a===action||!ACTIONS[a])return;action=a;actionStart=performance.now();actionDone=false;}
+function setTransient(a,ms){transientAction=a;transientUntil=performance.now()+ms;}
+function frameIndex(){const m=ACTIONS[action],i=Math.floor((performance.now()-actionStart)/(1000/m.fps));
+ if(m.loop)return i%m.frames; if(i>=m.frames){actionDone=true;return m.frames-1;} return i;}
+
+function wrapLines(t,w){ctx.font='11px "PingFang SC","Microsoft YaHei",monospace';
+ const out=[];let line='';for(const ch of t){if(ch==='\n'){out.push(line);line='';continue;}
+  const tt=line+ch;if(ctx.measureText(tt).width>w){out.push(line);line=ch;}else line=tt;} if(line)out.push(line);return out;}
+function setReply(t){reply=t;replyLines=wrapLines(petName+'：'+t,232);scrollTop=0;}
+setReply(reply);
+
+function roamStep(now,hour){
+ if(roamMode==='walk'){
+  setAction(Math.abs(targetX-roamX)>70?'running':'walking');
+  const dir=Math.sign(targetX-roamX)||1; facing=dir; roamX+=dir*(action==='running'?1.3:0.7);
+  if(Math.abs(targetX-roamX)<2.5){roamMode='act';setAction(pickActivity(hour));roamUntil=now+(2500+Math.random()*4500);}
+ } else {
+  if(now>roamUntil){
+   if(hour<7||hour>=23){setAction('sleeping');roamUntil=now+6000;return;} // 夜里基本就睡
+   roamMode='walk'; targetX=44+Math.random()*152; if(Math.random()<0.3)targetX=roamX;
+  }
+ }
+}
+
+function drawRoom(){  // 全息实验室
+ const t=performance.now()/1000;
+ const g=ctx.createLinearGradient(0,0,0,92);
+ g.addColorStop(0,'#04060e');g.addColorStop(1,'#081325');
+ ctx.fillStyle=g;ctx.fillRect(0,0,240,92);
+ // 墙面蓝图网格(很淡)
+ ctx.lineWidth=1;ctx.strokeStyle='rgba(60,140,200,0.10)';
+ for(let x=0;x<=240;x+=20){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,86);ctx.stroke();}
+ for(let y=0;y<86;y+=18){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(240,y);ctx.stroke();}
+ // 透视地面网格
+ ctx.strokeStyle='rgba(55,196,255,0.20)';
+ for(let i=-5;i<=5;i++){ctx.beginPath();ctx.moveTo(120+i*6,80);ctx.lineTo(120+i*22,91);ctx.stroke();}
+ [80,85,90].forEach(yy=>{ctx.beginPath();ctx.moveTo(0,yy);ctx.lineTo(240,yy);ctx.stroke();});
+ // 显示器墙 + 右侧屏
+ drawScreen(4,8,52,26,t,'code'); drawScreen(4,38,52,24,t,'wave'); drawScreen(60,12,22,20,t,'radial');
+ drawScreen(206,10,30,26,t,'code');
+ arcEmblem(96,15,t);          // 墙上反应堆徽标
+ holoSphere(150,42,21,t);     // 全息球
+ const scan=(t*16)%92;ctx.strokeStyle='rgba(120,220,255,0.10)';ctx.beginPath();ctx.moveTo(0,scan);ctx.lineTo(240,scan);ctx.stroke();
+ ctx.fillStyle='rgba(55,196,255,0.16)';ctx.beginPath();ctx.ellipse(roamX,90,26,4,0,0,7);ctx.fill(); // 脚下光圈
+}
+function drawScreen(x,y,w,h,t,kind){
+ ctx.fillStyle='rgba(55,196,255,0.06)';ctx.fillRect(x-1,y-1,w+2,h+2);
+ ctx.fillStyle='#0a1626';ctx.fillRect(x,y,w,h);
+ ctx.strokeStyle='rgba(55,196,255,0.6)';ctx.lineWidth=1;ctx.strokeRect(x+0.5,y+0.5,w-1,h-1);
+ ctx.save();ctx.beginPath();ctx.rect(x,y,w,h);ctx.clip();
+ if(kind==='code'){ctx.strokeStyle='rgba(90,230,170,0.85)';
+  for(let i=0;i<5;i++){const yy=y+4+i*4,ln=6+((i*37+Math.floor(t*4))%(w-10));ctx.beginPath();ctx.moveTo(x+3,yy);ctx.lineTo(x+3+ln,yy);ctx.stroke();}}
+ else if(kind==='wave'){ctx.strokeStyle='rgba(55,196,255,0.9)';ctx.beginPath();
+  for(let i=0;i<=w;i+=2){const yy=y+h/2+Math.sin(i*0.3+t*4)*(h/2-3);i?ctx.lineTo(x+i,yy):ctx.moveTo(x,yy);}ctx.stroke();}
+ else{const cx=x+w/2,cy=y+h/2,a=t*2;ctx.strokeStyle='rgba(55,196,255,0.7)';
+  ctx.beginPath();ctx.arc(cx,cy,w/2-3,a,a+4.2);ctx.stroke();ctx.beginPath();ctx.arc(cx,cy,w/2-6,-a,-a+3);ctx.stroke();
+  ctx.fillStyle='#bfe8ff';ctx.fillRect(cx-1,cy-1,2,2);}
+ ctx.restore();
+}
+function arcEmblem(cx,cy,t){const p=0.6+Math.sin(t*3)*0.25;
+ ctx.strokeStyle=`rgba(120,220,255,${0.4*p})`;ctx.lineWidth=2;ctx.beginPath();ctx.arc(cx,cy,8,0,7);ctx.stroke();
+ ctx.strokeStyle=`rgba(190,240,255,${0.7*p})`;ctx.lineWidth=1;ctx.beginPath();ctx.arc(cx,cy,5,0,7);ctx.stroke();
+ ctx.fillStyle=`rgba(225,250,255,${p})`;ctx.beginPath();ctx.arc(cx,cy,2,0,7);ctx.fill();}
+function holoSphere(cx,cy,r,t){
+ ctx.fillStyle='rgba(55,196,255,0.06)';ctx.beginPath();ctx.moveTo(cx-3,86);ctx.lineTo(cx+3,86);ctx.lineTo(cx+r,cy);ctx.lineTo(cx-r,cy);ctx.closePath();ctx.fill();
+ ctx.fillStyle='#16324a';ctx.fillRect(cx-5,85,10,3);
+ ctx.fillStyle='rgba(55,196,255,0.08)';ctx.beginPath();ctx.arc(cx,cy,r+4,0,7);ctx.fill();
+ ctx.lineWidth=1;ctx.strokeStyle='rgba(90,210,255,0.55)';
+ for(let k=0;k<5;k++){const rx=Math.abs(Math.cos(t*1.2+k*Math.PI/5))*r;ctx.beginPath();ctx.ellipse(cx,cy,Math.max(1,rx),r,0,0,7);ctx.stroke();}
+ ctx.strokeStyle='rgba(90,210,255,0.32)';
+ for(let k=-2;k<=2;k++){const yy=cy+k*r*0.4,rr=Math.sqrt(Math.max(0,r*r-(k*r*0.4)**2));ctx.beginPath();ctx.ellipse(cx,yy,rr,rr*0.28,0,0,7);ctx.stroke();}
+ ctx.strokeStyle='rgba(150,235,255,0.8)';ctx.beginPath();ctx.arc(cx,cy,r,0,7);ctx.stroke();
+ ctx.fillStyle='rgba(225,250,255,0.95)';ctx.beginPath();ctx.arc(cx,cy,2.5,0,7);ctx.fill();
+ ctx.strokeStyle='rgba(255,210,90,0.5)';ctx.beginPath();ctx.ellipse(cx,cy,r+6,(r+6)*0.34,0.5,0,7);ctx.stroke();
+ const oa=t*1.6;ctx.fillStyle='#ffd86a';ctx.beginPath();ctx.arc(cx+Math.cos(oa)*(r+6),cy+Math.sin(oa)*(r+6)*0.34,1.6,0,7);ctx.fill();
+}
+
+function render(){
+ drawRoom();
+ ctx.fillStyle='#000';ctx.fillRect(0,92,240,43);
+ // 角色
+ const sh=sheets[action];
+ if(sh&&sh.complete&&sh.naturalWidth){ctx.imageSmoothingEnabled=false;
+  const w=64*ZOOM,h=72*ZOOM,y=GROUND-h;
+  ctx.save();ctx.translate(roamX,0);if(facing<0)ctx.scale(-1,1);
+  ctx.drawImage(sh,frameIndex()*64,0,64,72,-w/2,y,w,h);ctx.restore();}
+ // 顶部叠加:名字 + 时钟 + 语音角标
+ ctx.textBaseline='top';ctx.font='12px "PingFang SC","Microsoft YaHei",monospace';
+ const d=new Date();ctx.fillStyle='#7a8a9a';
+ ctx.fillText(voiceOn?'🔊':'🔇',176,2);
+ ctx.fillText(`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`,202,2);
+ // 文字条
+ ctx.fillStyle='#243040';ctx.fillRect(0,BAR_Y-3,240,1);
+ ctx.font='11px "PingFang SC","Microsoft YaHei",monospace';
+ const iv=msgEl.value;
+ if(iv){ctx.fillStyle='#37c4ff';ctx.fillText(('> '+iv).slice(-40),4,BAR_Y);}
+ else{
+  for(let i=0;i<VIS;i++){const ln=replyLines[scrollTop+i];if(ln===undefined)continue;
+   ctx.fillStyle='#cdd8e8';ctx.fillText(ln,4,BAR_Y+i*LH);
+   if(scrollTop+i===0){ctx.fillStyle='#3ef03e';ctx.fillText(petName+'：',4,BAR_Y);}}
+  if(scrollTop>0)ctx.fillText('▲',230,BAR_Y);
+  if(scrollTop+VIS<replyLines.length)ctx.fillText('▾',230,BAR_Y+2*LH);}
+}
+
+function tick(){
+ const now=performance.now(), hour=new Date().getHours();
+ if(transientUntil&&now<transientUntil){ setAction(transientAction);
+  if(!ACTIONS[transientAction].loop&&actionDone)transientUntil=0;
+ } else { transientUntil='';
+  if(roamOn&&!msgEl.value) roamStep(now,hour); else setAction('idle');
+ }
+ render(); requestAnimationFrame(tick);
+}
+
+// ---- 翻页 ----
+function page(d){scrollTop=Math.max(0,Math.min(replyLines.length-VIS,scrollTop+d));}
+document.getElementById('pageUp').onclick=()=>page(-1);
+document.getElementById('pageDn').onclick=()=>page(1);
+window.addEventListener('keydown',e=>{
+ if(document.activeElement===msgEl)return;
+ if(e.key==='ArrowUp'){page(-1);e.preventDefault();}if(e.key==='ArrowDown'){page(1);e.preventDefault();}});
+
+// ---- 语音回复(TTS 播放)----
+let audioCtx=null;
+async function playTTS(text){
+ try{
+  const r=await fetch(BACKEND+'/tts',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({text})});
+  if(!r.ok)return; const ab=await r.arrayBuffer(); const pcm=new Int16Array(ab);
+  audioCtx=audioCtx||new (window.AudioContext||window.webkitAudioContext)();
+  const buf=audioCtx.createBuffer(1,pcm.length,24000); const ch=buf.getChannelData(0);
+  for(let i=0;i<pcm.length;i++)ch[i]=pcm[i]/32768; const src=audioCtx.createBufferSource();src.buffer=buf;src.connect(audioCtx.destination);src.start();
+ }catch(e){/* 语音需后端连上 DashScope */}
+}
+document.getElementById('voice').onclick=function(){voiceOn=!voiceOn;this.textContent=voiceOn?'🔊 语音回复:开':'🔇 语音回复:关';this.classList.toggle('on',voiceOn);};
+document.getElementById('roam').onclick=function(){roamOn=!roamOn;this.textContent=roamOn?'🚶 自主漫游:开':'🧍 自主漫游:关';this.classList.toggle('on',roamOn);};
+
+// ---- 聊天 ----
+async function send(){
+ const m=msgEl.value.trim();if(!m)return;msgEl.value='';
+ setReply('(在想…)');setTransient('thinking',60000);setAction('thinking');
+ try{
+  const r=await fetch(BACKEND+'/chat',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({petId:PET_ID,message:m})});
+  const j=await r.json(); setReply(j.reply||'……'); if(j.name)petName=j.name;
+  setTransient(emotionToAction(j.emotion||'neutral'),5000);
+  if(voiceOn)playTTS(j.reply||'');
+ }catch(e){ setReply('(连不上大脑 '+BACKEND+':'+e.message+')'); setTransient('sad',3000); }
+}
+document.getElementById('send').onclick=send;
+msgEl.addEventListener('keydown',e=>{if(e.key==='Enter')send();});
+document.querySelectorAll('.emo').forEach(b=>b.onclick=()=>setTransient(emotionToAction(b.dataset.emo),5000));
+document.querySelectorAll('.act').forEach(b=>b.onclick=()=>setTransient(b.dataset.act,ACTIONS[b.dataset.act].loop?5000:4000));
+
+fetch(BACKEND+'/health').then(r=>r.json()).then(j=>{
+ statusEl.innerHTML=`后端:<b>在线</b> · 大脑 ${j.hasKey?'✓':'✗'} · 语音 ${j.hasVoice?'✓':'✗'} · 同一只(${PET_ID})`;
+}).catch(()=>{statusEl.innerHTML='后端:<b>未连上</b>(漫游/翻页可玩;聊天需后端运行)';});
+tick();
+</script>
+</body>
+</html>

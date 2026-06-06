@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>小豆丁 · 场景预览(混搭风 · 10 场景)</title>
+<style>
+  :root{--gold:#ffc83a;--cyan:#35d6ff}
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100vh;background:radial-gradient(1200px 700px at 50% -10%,#16212f,#05070d 60%);
+    color:#dbe6f0;font:14px/1.5 ui-monospace,Menlo,monospace;display:flex;flex-direction:column;align-items:center;gap:14px;padding:22px 16px 56px}
+  h1{font-size:13px;letter-spacing:.16em;margin:0;color:#9fb3c8;text-transform:uppercase}h1 b{color:var(--gold)}
+  .device{padding:16px 16px 20px;border-radius:18px;background:linear-gradient(180deg,#e7c23a,#caa028);
+    box-shadow:0 24px 60px -20px #000,inset 0 2px 0 #fff6,inset 0 -3px 8px #0004}
+  .screen{padding:8px;border-radius:8px;background:#111;box-shadow:inset 0 0 0 2px #000,inset 0 0 18px #000}
+  canvas{width:720px;height:405px;display:block;image-rendering:pixelated;border-radius:4px}
+  .bar{display:flex;gap:6px;flex-wrap:wrap;width:720px;max-width:92vw;align-items:center;justify-content:center}
+  button.ctl{font:inherit;font-size:12px;cursor:pointer;color:#cdd9e5;background:#141b25;border:1px solid #283545;border-radius:8px;padding:6px 10px}
+  button.ctl:hover{border-color:var(--gold);color:#fff}
+  button.ctl.on{background:#0e4a66;border-color:var(--cyan);color:#fff}
+  .lab{width:46px;color:#7d8da0;font-size:12px;text-align:right}
+  .keys{font-size:11px;color:#5a6b7d}.keys b{color:#8fa3b6}
+</style>
+</head>
+<body>
+  <h1>小豆丁 · <b>混搭风「像素全息工程台」 — 10 场景</b></h1>
+  <div class="device"><div class="screen"><canvas id="c" width="240" height="135"></canvas></div></div>
+  <div class="bar"><span class="lab">场景</span><span id="scenes"></span></div>
+  <div class="bar"><span class="lab">时段</span><span id="times"></span>
+    <button class="ctl on" id="auto">🕒 跟随真实时间</button></div>
+  <div class="keys"><b>←/→</b> 切场景 · 点角色挥手 · 屏幕/钟表/<b>天气都是真实数据</b>(open-meteo) · 室内按作息自动切</div>
+<script>
+const BACKEND="http://localhost:8787", PET_ID="dabao";
+const cv=document.getElementById('c'), ctx=cv.getContext('2d');
+const rnd=(a,b)=>a+Math.random()*(b-a), pick=a=>a[Math.floor(Math.random()*a.length)], R=Math.round;
+
+/* ===== 角色精灵(复用 sheets/) ===== */
+const ACTIONS={idle:{f:6,fps:6,l:1},walking:{f:6,fps:10,l:1},running:{f:6,fps:14,l:1},
+ waving:{f:6,fps:10,l:0},victory:{f:6,fps:8,l:0},flying:{f:6,fps:10,l:1},
+ dancing:{f:8,fps:10,l:1},reading:{f:6,fps:4,l:1},thinking:{f:6,fps:5,l:1},playing:{f:6,fps:9,l:1}};
+const sheets={};for(const n in ACTIONS){const im=new Image();im.src='sheets/'+n+'.png';sheets[n]=im;}
+
+/* ===== 混搭调色:深蓝底(蓝图) + 青线框 + 霓虹辉光(赛博) + 像素硬边 + 金(角色) ===== */
+const C={bg0:'#070b18',bg1:'#0d1d33',ground:'#0a1422',grid:'rgba(53,214,255,.16)',
+ line:'#35d6ff',ink:'#e6f6ff',scr:'#dff4ff',neon:'#ff3a8c',gold:'#ffc83a'};
+const GROUND=92, BAR=94;  // 场景 0..94, 角色站 92, 下方信息条
+let hz=66;                // 当前场景地平线(render 每帧设;场景 draw 内引用)
+
+/* ===== 原语 ===== */
+function vgrad(y,h,a,b){const g=ctx.createLinearGradient(0,y,0,y+h);g.addColorStop(0,a);g.addColorStop(1,b);ctx.fillStyle=g;ctx.fillRect(0,y,240,h);}
+function px(x,y,w,h,col){ctx.fillStyle=col;ctx.fillRect(R(x),R(y),w,h);}
+function glow(col,b,fn){ctx.save();ctx.shadowColor=col;ctx.shadowBlur=b;fn();ctx.restore();}
+function gline(x1,y1,x2,y2,col,b){glow(col,b||5,()=>{ctx.strokeStyle=col;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();});}
+function grect(x,y,w,h,col,b){glow(col,b||5,()=>{ctx.strokeStyle=col;ctx.lineWidth=1;ctx.strokeRect(R(x)+.5,R(y)+.5,w-1,h-1);});}
+function gtext(s,x,y,col,size){ctx.font=(size||9)+'px Menlo,monospace';ctx.textBaseline='top';glow(col,5,()=>{ctx.fillStyle=col;ctx.fillText(s,x,y);});}
+function scanlines(){for(let y=0;y<BAR;y+=3){ctx.fillStyle='rgba(0,0,0,.10)';ctx.fillRect(0,y,240,1);}
+ const s=(performance.now()/55)%BAR;ctx.fillStyle='rgba(120,220,255,.05)';ctx.fillRect(0,s,240,2);}
+function gridGround(hz){ // 透视网格平台(蓝图感)
+ ctx.strokeStyle=C.grid;ctx.lineWidth=1;
+ for(let i=-6;i<=6;i++){ctx.beginPath();ctx.moveTo(120+i*7,hz);ctx.lineTo(120+i*40,BAR);ctx.stroke();}
+ for(let r=0;r<5;r++){const y=hz+r*r*1.6+2;ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(240,y);ctx.stroke();}}
+function starfield(n,h){for(let i=0;i<n;i++){const x=(i*73)%240,y=(i*37)%h;ctx.fillStyle='rgba(200,230,255,'+(0.3+(i%3)*0.25)+')';ctx.fillRect(x,y,1,1);}}
+
+/* ===== 真实天气(open-meteo,无需 key) ===== */
+let weather={t:'--',cat:'sun',label:'获取中'};
+function wxCat(c){if(c===0)return['sun','晴'];if(c<=2)return['suncloud','晴间多云'];if(c<=3)return['cloud','多云'];
+ if(c<=48)return['fog','雾'];if(c<=57)return['rain','毛毛雨'];if(c<=67)return['rain','雨'];
+ if(c<=77)return['snow','雪'];if(c<=82)return['rain','阵雨'];if(c<=86)return['snow','阵雪'];return['storm','雷雨'];}
+fetch('https://api.open-meteo.com/v1/forecast?latitude=39.9&longitude=116.4&current_weather=true')
+ .then(r=>r.json()).then(j=>{const w=j.current_weather;const[cat,label]=wxCat(w.weathercode);
+  weather={t:Math.round(w.temperature),cat,label};}).catch(()=>{weather={t:26,cat:'sun',label:'晴'};});
+function wxIcon(x,y,cat){const t=performance.now()/1000;
+ const sun=()=>{px(x+5,y+5,6,6,C.gold);for(let a=0;a<8;a++){const ang=a*Math.PI/4+t*.5;px(x+8+Math.cos(ang)*7,y+8+Math.sin(ang)*7,2,2,C.gold);}};
+ const cloud=(col)=>{px(x+3,y+8,11,4,col);px(x+5,y+5,7,4,col);};
+ if(cat==='sun')sun();
+ else if(cat==='suncloud'){px(x+8,y+3,5,5,C.gold);cloud('#9fc6e6');}
+ else if(cat==='cloud')cloud('#8fb0cc');
+ else if(cat==='fog'){for(let i=0;i<4;i++)px(x+2,y+4+i*3,12,1,'#9fb6cc');}
+ else if(cat==='rain'){cloud('#7f9ec0');for(let i=0;i<3;i++)px(x+4+i*4,y+12,1,3,C.line);}
+ else if(cat==='snow'){cloud('#b8cfe6');for(let i=0;i<3;i++)px(x+4+i*4,y+13,2,2,'#fff');}
+ else{cloud('#7f9ec0');px(x+7,y+11,2,5,C.gold);}}
+
+/* ===== 宠物真实状态 ===== */
+let pet={intimacy:72};
+fetch(BACKEND+'/pet/'+PET_ID).then(r=>r.json()).then(j=>{if(j&&j.stats&&j.stats.intimacy!=null)pet.intimacy=Math.round(j.stats.intimacy);}).catch(()=>{});
+
+/* ===== 10 个场景(统一混搭风 · 全息投影) ===== */
+function bg(hz,night){vgrad(0,hz,night?'#05070f':C.bg0,night?'#0a1426':C.bg1);
+ ctx.fillStyle=C.ground;ctx.fillRect(0,hz,240,BAR-hz);}  // 地面填实,清掉上一帧残影
+const SCENES=[
+ {id:'studio',name:'工作室',indoor:1,hz:66,draw(t){ // 代码瀑布 + 全息环 + 工作台
+  for(let col=0;col<6;col++){const x=12+col*9;for(let i=0;i<6;i++){const y=((i*11+t*22+col*7)%62);
+   ctx.fillStyle='rgba(90,230,170,'+(0.5-i*0.06)+')';ctx.fillRect(x,y,1,4);}}
+  grect(150,18,72,30,C.line,5);gtext('SYS OS',154,21,C.scr,7);
+  const cx=186,cy=36;for(let k=0;k<3;k++){glow(C.line,5,()=>{ctx.strokeStyle=C.line;ctx.beginPath();ctx.ellipse(cx,cy,16-k*3,7-k*2,t*.6+k,0,7);ctx.stroke();});}
+  grect(20,hz-12,40,12,C.gold,4);grect(64,hz-8,18,8,C.line,4);}},      // 工作台
+ {id:'living',name:'客厅',indoor:1,hz:66,draw(t){ // 全息电视 + 沙发 + 暖灯
+  grect(14,12,64,34,C.line,6);for(let i=0;i<=64;i+=2){const y=29+Math.sin(i*.25+t*4)*9;ctx.fillStyle='rgba(53,214,255,.5)';ctx.fillRect(14+i,y,2,1);}
+  grect(150,hz-16,76,16,C.neon,5);grect(150,hz-26,12,12,C.neon,4);                 // 沙发
+  gline(96,hz,96,hz-28,C.gold,4);glow(C.gold,8,()=>{px(92,hz-32,8,5,C.gold);});}}, // 落地灯
+ {id:'bedroom',name:'卧室',indoor:1,hz:64,draw(t){ // 星空窗 + 床 + 月
+  grect(150,16,40,30,C.line,5);ctx.save();ctx.beginPath();ctx.rect(151,17,38,28);ctx.clip();
+   starfield(20,46);glow('#dfe8ff',8,()=>{px(176,24,7,7,'#e8ecff');});ctx.restore();
+  grect(150,16,40,30,C.line,5);
+  grect(20,hz-14,76,14,C.line,5);px(24,hz-22,16,8,'#cfe0f0');}},                   // 床+枕
+ {id:'city',name:'高楼大厦',indoor:0,hz:74,draw(t){ // 霓虹天际线 + 飞行器
+  for(let i=0;i<10;i++){const bw=16+((i*53)%14),bh=18+((i*97)%40),bx=i*25-6,by=hz-bh;
+   grect(bx,by,bw,bh,i%2?C.line:C.neon,3);
+   for(let wx=bx+3;wx<bx+bw-2;wx+=5)for(let wy=by+3;wy<hz-3;wy+=6)if((wx*7+wy*13+i)%5<2)px(wx,wy,2,3,C.gold);}
+  const fx=(t*40)%260-10;glow(C.neon,8,()=>{px(fx,22,4,1,C.neon);});}},
+ {id:'desert',name:'沙漠',indoor:0,hz:60,draw(t){ // 全息烈日 + 线框沙丘 + 热浪
+  const cx=192,cy=20;for(let k=0;k<3;k++)glow(C.gold,6,()=>{ctx.strokeStyle=C.gold;ctx.beginPath();ctx.arc(cx,cy,6+k*4,0,7);ctx.stroke();});
+  for(let d=0;d<3;d++){ctx.strokeStyle='rgba(255,200,100,'+(0.5-d*0.12)+')';ctx.beginPath();ctx.moveTo(0,hz+d*9);
+   for(let x=0;x<=240;x+=8)ctx.lineTo(x,hz+d*9-Math.sin(x*.03+d)*7);ctx.stroke();}
+  for(let i=0;i<5;i++)px((i*60+t*10)%240,hz-6,8,1,'rgba(255,220,150,.3)');gline(40,hz,40,hz-7,C.line,3);}},
+ {id:'grass',name:'草原',indoor:0,hz:60,draw(t){ // 网格草原 + 数据草浪 + 远山
+  ctx.strokeStyle='rgba(80,200,255,.4)';ctx.beginPath();ctx.moveTo(0,hz);
+   for(let x=0;x<=240;x+=24)ctx.lineTo(x,hz-10-Math.sin(x*.04)*7);ctx.stroke();
+  for(let i=0;i<48;i++){const x=(i*23)%240,y=hz+2+(i*31)%30,sw=Math.sin(t*2+i)*2;gline(x,y,x+sw,y-5,'#5ee08a',3);}
+  glow(C.gold,6,()=>{px(196,16,8,8,C.gold);});}},
+ {id:'ocean',name:'海洋',indoor:0,hz:56,draw(t){ // 数据波浪 + 月/日
+  for(let r=0;r<6;r++){ctx.strokeStyle='rgba(53,214,255,'+(0.7-r*0.1)+')';ctx.lineWidth=1;ctx.beginPath();
+   for(let x=0;x<=240;x+=4){const y=hz+r*6+Math.sin(x*.12+t*1.4+r)*2;x?ctx.lineTo(x,y):ctx.moveTo(0,y);}ctx.stroke();}
+  glow(C.gold,8,()=>{px(196,16,7,7,C.gold);});for(let i=0;i<10;i++)px((i*53+t*30)%240,hz+6+(i%4)*7,2,1,'rgba(255,255,255,.5)');}},
+ {id:'snow',name:'雪山',indoor:0,hz:70,draw(t){ // 线框雪山 + 极光 + 飘雪
+  for(let k=0;k<3;k++){const aa=0.4-k*0.1;ctx.strokeStyle='rgba(120,200,255,'+aa+')';ctx.beginPath();
+   ctx.moveTo(0,hz);ctx.lineTo(40+k*60,hz-30-k*6);ctx.lineTo(90+k*60,hz);ctx.stroke();}
+  glow(C.neon,6,()=>{ctx.strokeStyle='rgba(120,255,200,.5)';ctx.beginPath();for(let x=0;x<=240;x+=6)ctx.lineTo(x,14+Math.sin(x*.05+t)*4);ctx.stroke();});
+  for(let i=0;i<26;i++){const x=(i*47+t*8)%240,y=(i*29+t*20)%hz;px(x,y,1,1,'#fff');}}},
+ {id:'forest',name:'森林',indoor:0,hz:64,draw(t){ // 线框树林 + 萤火
+  for(let i=0;i<7;i++){const x=10+i*34,bh=20+(i%3)*8;gline(x,hz,x,hz-bh,'#5ee08a',3);
+   for(let k=0;k<3;k++)grect(x-8+k,hz-bh-6+k*5,16-k*2,8,'rgba(94,224,138,.5)',3);}
+  for(let i=0;i<10;i++){const x=(i*53+Math.sin(t+i)*20+240)%240,y=30+Math.cos(t*.7+i)*18;glow(C.gold,6,()=>{px(x,y,2,2,C.gold);});}}},
+ {id:'space',name:'太空',indoor:0,hz:50,draw(t){ // 星空 + 行星 + 轨道 + 流星
+  starfield(40,BAR);glow(C.neon,10,()=>{ctx.fillStyle='#3a4a8a';ctx.beginPath();ctx.arc(150,24,13,0,7);ctx.fill();});
+  glow(C.gold,5,()=>{ctx.strokeStyle=C.gold;ctx.beginPath();ctx.ellipse(150,24,21,7,0.5,0,7);ctx.stroke();});
+  const mx=(t*60)%280-20;gline(mx,14,mx-10,20,'#fff',6);
+  for(let k=0;k<2;k++)glow(C.line,5,()=>{ctx.strokeStyle=C.line;ctx.beginPath();ctx.ellipse(200,44,18-k*6,8-k*3,t*.5,0,7);ctx.stroke();});}},
+];
+let sIdx=0, scene=SCENES[0], forcedHour=null, autoMode=true;
+const hourNow=()=>forcedHour!=null?forcedHour:new Date().getHours();
+function autoScene(){const h=hourNow();return (h>=23||h<7)?'bedroom':(h===12||h===13||(h>=18&&h<22))?'living':'studio';}
+
+/* ===== 功能屏:时钟/日期/天气/亲密度 全真实 ===== */
+function panelBox(x,y,w,h,title){px(x,y,w,h,'rgba(8,20,38,.66)');grect(x,y,w,h,C.line,5);
+ ctx.font='7px Menlo';ctx.textBaseline='top';ctx.fillStyle=C.neon;ctx.fillText(title,x+3,y+2);}
+function drawPanels(){const d=new Date(),hh=String(d.getHours()).padStart(2,'0'),mm=String(d.getMinutes()).padStart(2,'0'),
+ ss=String(d.getSeconds()).padStart(2,'0'),date=`${d.getMonth()+1}/${d.getDate()} 周${'日一二三四五六'[d.getDay()]}`;
+ if(scene.indoor){
+  panelBox(8,8,56,26,'CLOCK');gtext(hh+':'+mm,11,18,C.scr,13);ctx.fillStyle=C.line;ctx.font='7px Menlo';ctx.fillText(':'+ss,46,22);ctx.fillText(date,11,27);
+  panelBox(8,38,56,22,'WEATHER');wxIcon(10,44,weather.cat);gtext(weather.t+'°',30,46,C.scr,11);ctx.fillStyle=C.line;ctx.font='7px Menlo';ctx.fillText(weather.label,30,55);
+  panelBox(8,64,56,14,'BOND');px(11,72,42,3,'rgba(255,255,255,.12)');glow(C.neon,4,()=>{px(11,72,42*pet.intimacy/100,3,C.neon);});
+ } else { // 室外:左上合并 HUD
+  panelBox(6,6,84,42,'SYS HUD');gtext(hh+':'+mm,9,15,C.scr,12);
+  ctx.fillStyle=C.line;ctx.font='7px Menlo';ctx.fillText(date,9,28);
+  wxIcon(50,12,weather.cat);ctx.fillStyle=C.scr;ctx.fillText(weather.t+'°',68,14);
+  ctx.fillStyle=C.line;ctx.fillText(weather.label,50,30);ctx.fillText('亲密 '+pet.intimacy,50,37);
+ }}
+
+/* ===== 角色(唯一角色,带落地光影) ===== */
+let act='idle',aStart=performance.now(),aDone=false,x=120,dir=1,mode='act',until=0,target=120,trans=0;
+function setAct(a){if(a===act||!ACTIONS[a])return;act=a;aStart=performance.now();aDone=false;}
+function frame(){const m=ACTIONS[act],i=Math.floor((performance.now()-aStart)/(1000/m.fps));if(m.l)return i%m.f;if(i>=m.f){aDone=true;return m.f-1;}return i;}
+function roam(now){
+ if(trans&&now<trans)return; trans=0;
+ if(mode==='walk'){setAct(Math.abs(target-x)>70?'running':'walking');dir=Math.sign(target-x)||1;x+=dir*(act==='running'?1.4:0.8);
+  if(Math.abs(target-x)<3){mode='act';setAct(pick(scene.id==='space'?['flying','idle','victory']:['idle','thinking','reading','playing','waving']));until=now+rnd(2200,6000);}}
+ else if(now>until){mode='walk';target=44+Math.random()*150;if(Math.random()<.25)target=x;}}
+function drawIron(){const sh=sheets[act];if(!(sh&&sh.complete&&sh.naturalWidth))return;
+ glow(C.line,10,()=>{ctx.fillStyle='rgba(53,214,255,.18)';ctx.beginPath();ctx.ellipse(x,GROUND,24,4,0,0,7);ctx.fill();}); // 落地光圈
+ ctx.imageSmoothingEnabled=false;const Z=1.05,w=64*Z,h=72*Z;
+ ctx.save();ctx.translate(R(x),0);if(dir<0)ctx.scale(-1,1);ctx.drawImage(sh,frame()*64,0,64,72,-w/2,GROUND-h,w,h);ctx.restore();}
+
+/* ===== 主循环 ===== */
+function bottomBar(){px(0,BAR,240,135-BAR,'#0a0f16');px(0,BAR,240,1,'#243040');
+ ctx.textBaseline='top';ctx.font='11px "PingFang SC",Menlo,monospace';
+ ctx.fillStyle='#3ef03e';ctx.fillText('小豆丁：',4,98);ctx.fillStyle='#cdd8e8';ctx.fillText('场景『'+scene.name+'』'+(scene.indoor?'🏠':'🌄'),46,98);
+ ctx.fillStyle='#67788c';ctx.font='10px Menlo';ctx.fillText('←/→ 切场景 · 点我挥手 · 天气真实',4,116);}
+function render(){const t=performance.now()/1000,now=performance.now();hz=scene.hz;
+ bg(hz,(hourNow()>=20||hourNow()<6));
+ scene.draw(t);
+ gridGround(hz);
+ drawPanels();
+ scanlines();
+ roam(now);drawIron();
+ bottomBar();
+ const d=new Date();ctx.fillStyle=C.ink;ctx.font='12px Menlo';ctx.textBaseline='top';ctx.textAlign='right';
+ ctx.fillText(`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`,236,2);ctx.textAlign='left';
+ requestAnimationFrame(render);}
+
+/* ===== 交互 ===== */
+function setScene(i){sIdx=(i+SCENES.length)%SCENES.length;scene=SCENES[sIdx];
+ document.querySelectorAll('#scenes .ctl').forEach((b,k)=>b.classList.toggle('on',k===sIdx));}
+const sw=document.getElementById('scenes');SCENES.forEach((s,i)=>{const b=document.createElement('button');b.className='ctl';b.textContent=(s.indoor?'🏠':'🌄')+s.name;b.onclick=()=>{autoMode=false;document.getElementById('auto').classList.remove('on');setScene(i);};sw.appendChild(b);});
+const tm=document.getElementById('times');[['早9',9],['午饭12',12],['傍晚18',18],['夜里23',23]].forEach(([n,h])=>{const b=document.createElement('button');b.className='ctl';b.textContent=n;b.onclick=()=>{forcedHour=h;autoMode=true;document.getElementById('auto').classList.add('on');setScene(SCENES.findIndex(s=>s.id===autoScene()));};tm.appendChild(b);});
+document.getElementById('auto').onclick=function(){forcedHour=null;autoMode=true;this.classList.add('on');setScene(SCENES.findIndex(s=>s.id===autoScene()));};
+window.addEventListener('keydown',e=>{if(e.key==='ArrowRight'){autoMode=false;document.getElementById('auto').classList.remove('on');setScene(sIdx+1);}
+ if(e.key==='ArrowLeft'){autoMode=false;document.getElementById('auto').classList.remove('on');setScene(sIdx-1);}});
+cv.addEventListener('click',()=>{setAct('waving');trans=performance.now()+1500;});
+// 作息自动切(每 30s 或时段变化时;仅 autoMode)
+setInterval(()=>{if(autoMode){const id=autoScene();if(scene.id!==id)setScene(SCENES.findIndex(s=>s.id===id));}},30000);
+
+setScene(0);render();
+</script>
+</body>
+</html>

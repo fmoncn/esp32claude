@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>小豆丁 · xiaodouding — an LLM pixel pet for the M5Stack Cardputer</title>
+<meta name="description" content="A live, in-browser preview of 小豆丁 (xiaodouding): an LLM-powered pixel pet that roams 10 day/night scenes on the M5Stack Cardputer, with real clock & weather. Open source, Apache-2.0." />
+<meta property="og:title" content="小豆丁 · xiaodouding — LLM pixel pet for the M5Stack Cardputer" />
+<meta property="og:description" content="Live in-browser preview: a pixel pet roaming 10 scenes with real clock & weather. ESP32-S3 firmware + Node brain. Open source." />
+<meta property="og:image" content="docs/mascot.png" />
+<style>
+  :root{
+    --gold:#ffc83a; --cyan:#35d6ff; --neon:#ff3a8c; --green:#5ee08a;
+    --ink:#dbe6f0; --dim:#7d8da0; --faint:#5a6b7d;
+    --bg0:#05070d; --bg1:#16212f; --panel:#0f1620; --line:#283545;
+    --space-1:.5rem; --space-2:1rem; --space-3:1.6rem; --space-5:3.2rem;
+    --ease:cubic-bezier(.16,1,.3,1);
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0; min-height:100vh; color:var(--ink);
+    background:radial-gradient(1200px 720px at 50% -8%,var(--bg1),var(--bg0) 60%) fixed;
+    font:15px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;
+    -webkit-font-smoothing:antialiased;
+  }
+  /* faint blueprint grid behind everything */
+  body::before{
+    content:""; position:fixed; inset:0; z-index:0; pointer-events:none;
+    background-image:linear-gradient(rgba(53,214,255,.04) 1px,transparent 1px),
+                     linear-gradient(90deg,rgba(53,214,255,.04) 1px,transparent 1px);
+    background-size:32px 32px; mask-image:radial-gradient(circle at 50% 20%,#000,transparent 75%);
+  }
+  main{position:relative; z-index:1; max-width:880px; margin:0 auto; padding:clamp(2rem,5vw,4rem) 1.2rem 4rem}
+
+  /* ---- hero ---- */
+  .kicker{font-size:11px; letter-spacing:.32em; text-transform:uppercase; color:var(--dim); margin:0 0 var(--space-2)}
+  h1{font-size:clamp(2.4rem,2rem+5vw,4.6rem); line-height:.98; margin:0; letter-spacing:-.01em; font-weight:800}
+  h1 .zh{color:#fff}
+  h1 .en{display:block; font-size:.34em; letter-spacing:.5em; color:var(--gold); font-weight:600; margin-top:.5em; text-transform:uppercase}
+  .lede{font-size:clamp(1rem,.95rem+.4vw,1.2rem); color:#b8c6d6; max-width:42ch; margin:var(--space-3) 0 0}
+  .lede b{color:var(--cyan); font-weight:600}
+  .lede .zh{display:block; color:var(--dim); font-size:.86em; margin-top:.5em}
+
+  .cta{display:flex; flex-wrap:wrap; gap:.7rem; margin-top:var(--space-3)}
+  .btn{
+    --c:var(--cyan);
+    display:inline-flex; align-items:center; gap:.55em; cursor:pointer; text-decoration:none;
+    font:inherit; font-size:14px; font-weight:600; color:#06121c;
+    background:linear-gradient(100deg,var(--gold),#ffd86a); border:none; border-radius:11px;
+    padding:.72em 1.25em; transition:transform .2s var(--ease),box-shadow .2s var(--ease),filter .2s var(--ease);
+    box-shadow:0 8px 24px -10px var(--gold);
+  }
+  .btn:hover{transform:translateY(-2px); box-shadow:0 14px 34px -10px var(--gold); filter:brightness(1.06)}
+  .btn:active{transform:translateY(0)}
+  .btn .em{font-size:1.15em; line-height:1}
+  .btn.alt{color:var(--ink); background:var(--panel); border:1px solid var(--line); box-shadow:none}
+  .btn.alt:hover{border-color:var(--cyan); color:#fff; box-shadow:0 10px 30px -14px var(--cyan)}
+  .btn.ghost{color:var(--dim); background:transparent; border:1px solid transparent; box-shadow:none; padding-left:.4em}
+  .btn.ghost:hover{color:var(--cyan); transform:none}
+
+  /* ---- live device ---- */
+  .live{margin-top:var(--space-5)}
+  .live .tag{display:flex; align-items:center; gap:.6em; font-size:12px; letter-spacing:.16em; text-transform:uppercase; color:var(--dim); margin-bottom:var(--space-2)}
+  .pulse{width:8px; height:8px; border-radius:50%; background:var(--green); box-shadow:0 0 0 0 rgba(94,224,138,.7); animation:pulse 2s var(--ease) infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(94,224,138,.6)}70%{box-shadow:0 0 0 9px rgba(94,224,138,0)}100%{box-shadow:0 0 0 0 rgba(94,224,138,0)}}
+  .stage{display:flex; justify-content:center; overflow:hidden}
+  .frame{width:800px; height:672px; transform-origin:top center; will-change:transform}
+  .frame iframe{width:100%; height:100%; border:0; border-radius:14px; display:block}
+  .hint{text-align:center; color:var(--faint); font-size:12px; margin-top:.8rem}
+  .hint b{color:var(--dim)}
+
+  /* ---- features ---- */
+  .feats{margin-top:var(--space-5); display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:.9rem}
+  .card{
+    background:linear-gradient(180deg,rgba(20,27,37,.9),rgba(13,18,26,.9));
+    border:1px solid var(--line); border-radius:14px; padding:1.15rem 1.2rem;
+    transition:transform .25s var(--ease),border-color .25s var(--ease)}
+  .card:hover{transform:translateY(-3px); border-color:rgba(53,214,255,.5)}
+  .card .ic{font-size:1.4rem; line-height:1}
+  .card h3{margin:.6rem 0 .3rem; font-size:15px; color:#fff; letter-spacing:.02em}
+  .card p{margin:0; font-size:13px; color:var(--dim); line-height:1.55}
+
+  /* ---- specs / footer ---- */
+  .meta{margin-top:var(--space-5); display:flex; flex-wrap:wrap; gap:.5rem .6rem; align-items:center}
+  .chip{font-size:12px; color:var(--dim); background:var(--panel); border:1px solid var(--line); border-radius:999px; padding:.34em .9em}
+  .chip b{color:var(--gold); font-weight:600}
+  footer{margin-top:var(--space-5); padding-top:var(--space-3); border-top:1px solid var(--line); color:var(--faint); font-size:12.5px; display:flex; flex-wrap:wrap; gap:.4rem 1.2rem; align-items:center}
+  footer a{color:var(--dim); text-decoration:none; border-bottom:1px dashed transparent; transition:color .2s,border-color .2s}
+  footer a:hover{color:var(--cyan); border-color:var(--cyan)}
+  footer .sp{flex:1}
+</style>
+</head>
+<body>
+<main>
+  <p class="kicker">Open source · Apache-2.0 · M5Stack Cardputer</p>
+  <h1><span class="zh">小豆丁</span><span class="en">xiaodouding</span></h1>
+
+  <p class="lede">
+    An <b>LLM-powered pixel pet</b> that lives on a credit-card-sized computer — it chats with
+    memory, talks back with voice, and roams <b>10 day/night scenes</b> showing the real time and
+    real weather.
+    <span class="zh">一只跑在 M5Stack Cardputer 上、由大模型驱动的像素电子宠物 — 会聊天、会说话、自己过日子。</span>
+  </p>
+
+  <div class="cta">
+    <a class="btn" href="sim/scenes.html"><span class="em">🌄</span> 10-scene tour · 场景巡览</a>
+    <a class="btn alt" href="sim/index.html"><span class="em">💬</span> Chat twin · 设备孪生</a>
+    <a class="btn ghost" href="https://github.com/huaspirit123/xiaodouding"><span class="em">★</span> View source on GitHub</a>
+  </div>
+
+  <section class="live" aria-label="Live in-browser preview">
+    <div class="tag"><span class="pulse"></span> Live preview — running in your browser right now</div>
+    <div class="stage" id="stage">
+      <div class="frame" id="frame"><iframe title="小豆丁 live scene preview" src="sim/scenes.html" loading="lazy"></iframe></div>
+    </div>
+    <p class="hint">Use <b>←/→</b> to switch scenes · click the pet to wave · the clock &amp; weather are <b>real</b> (open-meteo). Chat needs the local backend — see the repo.</p>
+  </section>
+
+  <section class="feats" aria-label="Features">
+    <article class="card"><div class="ic">🧠</div><h3>Real talk + memory</h3><p>DeepSeek brain (any OpenAI-compatible endpoint) with short-term, rolling-summary &amp; fact memory. Replies carry an emotion that drives the animation.</p></article>
+    <article class="card"><div class="ic">🎙️</div><h3>On-device voice</h3><p>Push-to-talk streaming speech-to-text, and the pet speaks its reply back — up to ~1 minute, device-direct.</p></article>
+    <article class="card"><div class="ic">🏙️</div><h3>10 cohesive scenes</h3><p>A "pixel holographic workstation" — blueprint grid + neon glow + crisp pixels. Indoor auto-switches by schedule; outdoor on demand.</p></article>
+    <article class="card"><div class="ic">🌤️</div><h3>Real info on screen</h3><p>Live NTP clock, IP-located weather via open-meteo, WiFi bars and a bond meter — the same data you see in this preview.</p></article>
+  </section>
+
+  <div class="meta">
+    <span class="chip"><b>MCU</b> ESP32-S3FN8 · 8MB flash</span>
+    <span class="chip"><b>RAM</b> no PSRAM (~300KB)</span>
+    <span class="chip"><b>Display</b> 240×135</span>
+    <span class="chip"><b>Brain</b> Node/Express + LLM</span>
+    <span class="chip"><b>Bring</b> your own character</span>
+  </div>
+
+  <footer>
+    <span>🤖 Pixel Buddy · the bundled original mascot</span>
+    <span class="sp"></span>
+    <a href="https://github.com/huaspirit123/xiaodouding">GitHub</a>
+    <a href="https://github.com/huaspirit123/xiaodouding#readme">README (EN)</a>
+    <a href="https://github.com/huaspirit123/xiaodouding/blob/main/README.zh-CN.md">中文</a>
+    <a href="https://github.com/huaspirit123/xiaodouding/blob/main/LICENSE">Apache-2.0</a>
+  </footer>
+</main>
+
+<script>
+  // Scale the fixed-size live device frame to fit any viewport, crisply.
+  var SIM_W = 800, SIM_H = 672;
+  var stage = document.getElementById('stage');
+  var frame = document.getElementById('frame');
+  function fit(){
+    var s = Math.min(1, stage.clientWidth / SIM_W);
+    frame.style.transform = 'scale(' + s + ')';
+    stage.style.height = (SIM_H * s) + 'px';
+  }
+  window.addEventListener('resize', fit);
+  fit();
+</script>
+</body>
+</html>

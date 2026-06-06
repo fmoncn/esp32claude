@@ -1,0 +1,23 @@
+#pragma once
+// Copy this file to `config.h` and fill in your own values.
+//   cp firmware/src/config.h.example firmware/src/config.h
+// config.h is gitignored — keep your real WiFi password / API keys out of git.
+
+// 1) WiFi (the pet and your backend machine must be on the same LAN)
+#define WIFI_SSID     "YOUR_WIFI_SSID"
+#define WIFI_PASSWORD "YOUR_WIFI_PASSWORD"
+
+// 2) Backend "brain" URL = your computer's LAN IP + port (see backend/README.md)
+#define BACKEND_URL   "http://192.168.1.x:8787/chat"
+
+// 3) This pet's id. The backend accumulates memory per id; change it to raise a different pet.
+#define PET_ID        "buddy"
+
+// 4) Optional shared token — must match PET_TOKEN in backend/.env (leave empty to disable).
+#define PET_TOKEN     ""
+
+// 5) Voice (device talks to DashScope directly). Get a key at https://dashscope.console.aliyun.com
+//    Leave the key empty to disable on-device voice (text chat still works).
+#define DASHSCOPE_API_KEY   "sk-YOUR_DASHSCOPE_KEY"
+#define DASHSCOPE_TTS_MODEL "qwen3-tts-flash"
+#define DASHSCOPE_VOICE     "Ethan"   // Cherry/Chelsie/Serena (female) · Ethan/Dylan (male)
