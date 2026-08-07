@@ -34,16 +34,16 @@ static const char* DELL_HUB = "http://LAN_IP:4000";
 inline Card& cur() { static Card c; return c; }
 inline CardType& cardOfScene() { static CardType t = CARD_QUOTE; return t; }
 
-// 场景 → 卡片映射(10 场景, 4个指数各占一场景)
+// 场景 → 卡片映射(10 场景, 4个指数连续场景1-4)
 inline CardType cardForScene(int idx) {
   switch (idx % 10) {
     case 0: return CARD_DELL;     // 工作室 → Dell系统
-    case 1: return CARD_QUOTE;    // 客厅   → 标普500
-    case 2: return CARD_QUOTA;    // 卧室   → Claude额度
-    case 3: return CARD_QUOTE;    // 高楼   → 纳指100
-    case 4: return CARD_VPS;      // 沙漠   → VPS系统
-    case 5: return CARD_QUOTE;    // 草原   → 上证指数
-    case 6: return CARD_QUOTE;    // 海洋   → 恒生指数
+    case 1: return CARD_QUOTE;    // 客厅   → 标普500(指数0)
+    case 2: return CARD_QUOTE;    // 卧室   → 纳指100(指数1)
+    case 3: return CARD_QUOTE;    // 高楼   → 上证指数(指数2)
+    case 4: return CARD_QUOTE;    // 沙漠   → 恒生指数(指数3)
+    case 5: return CARD_VPS;      // 草原   → VPS系统
+    case 6: return CARD_QUOTA;    // 海洋   → Claude额度
     case 7: return CARD_QUOTA;    // 雪山   → Claude额度
     case 8: return CARD_DELL;     // 森林   → Dell系统
     default: return CARD_VPSMEM;  // 太空   → VPS内存
@@ -92,8 +92,8 @@ inline bool fetch(int sceneIdx) {
   switch (cardOfScene()) {
     case CARD_QUOTE: {
       // 行情: 每场景1个指数, 第1行=名称+价格, 第2行=涨跌(红涨绿跌)
-      // 行情场景→指数序号: 客厅(1)→标普0, 高楼(3)→纳指1, 草原(5)→上证2, 海洋(6)→恒生3
-      static const int qidx[10] = {0,0,0,1,0,2,3,0,0,0};  // 按场景序号映射指数
+      // 连续场景1-4→指数: 1→标普0, 2→纳指1, 3→上证2, 4→恒生3
+      static const int qidx[10] = {0,0,1,2,3,0,0,0,0,0};  // 按场景序号映射指数
       JsonDocument d;
       if (!getJson("/api/indices", d)) { snprintf(c.line1, sizeof(c.line1), "行情获取中…"); return false; }
       JsonArray arr = d.as<JsonArray>();
@@ -103,7 +103,7 @@ inline bool fetch(int sceneIdx) {
         const char* nm = arr[i]["name"] | "";
         // 用 as<> 显式读浮点/整数(避免 `| 0` 截断浮点)
         double pr = arr[i]["price"].as<double>(); double g = arr[i]["pct"].as<double>();
-        snprintf(c.line1, sizeof(c.line1), "%s%.0f", nm, pr);   // 名称+价格(无逗号)
+        snprintf(c.line1, sizeof(c.line1), "%s  %.0f", nm, pr);   // 名称+价格(空2格,无逗号)
         snprintf(c.line2, sizeof(c.line2), "%+.2f%%", g);       // 涨跌
         c.trend = (g > 0.005) ? 1 : (g < -0.005) ? -1 : 0;      // 红涨绿跌平
         c.has = true;
