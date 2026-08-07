@@ -177,18 +177,15 @@ inline void drawPanels(M5Canvas& c, int idx, int intimacy) {
     c.fillRect(X + 4, Y + 36, W - 8, 2, c.color565(40, 50, 64));
     if (intimacy >= 0) c.fillRect(X + 4, Y + 36, (W - 8) * (intimacy > 100 ? 100 : intimacy) / 100, 2, ne);
   } else {
-    // 其他场景: 显示 Dell Hub 场景卡片(替代时钟/天气)
+    // 其他场景: 显示 Dell Hub 场景卡片(替代时钟/天气), 只显示2行数据
     c.setFont(&fonts::efontCN_14);
-    // 行1: 卡片标题(亮青)
-    c.setTextColor(ln, bgp); c.setCursor(X + 4, Y + 1); c.print(Hub::cur().title);
-    // 行2/3: 卡片数据(Claude橙/暗色), 紧凑
     c.setTextColor(0xD3AB, bgp);  // Claude橙
     if (Hub::cur().has && Hub::cur().line1[0]) {
-      c.setCursor(X + 4, Y + 17); c.print(Hub::cur().line1);
-      c.setTextColor(dim, bgp);
-      if (Hub::cur().line2[0]) { c.setCursor(X + 4, Y + 31); c.print(Hub::cur().line2); }
+      c.setCursor(X + 4, Y + 4); c.print(Hub::cur().line1);
+      c.setTextColor(scr, bgp);  // 亮色第2行
+      if (Hub::cur().line2[0]) { c.setCursor(X + 4, Y + 24); c.print(Hub::cur().line2); }
     } else {
-      c.setCursor(X + 4, Y + 17); c.print("卡片数据获取中…");
+      c.setCursor(X + 4, Y + 4); c.print("卡片数据获取中…");
     }
   }
 }
