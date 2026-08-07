@@ -102,7 +102,6 @@ static void render() {
 
   // 对话框(背景=地面延伸色,与场景一体化;文字=Claude 橙色)
   canvas.fillRect(0, BAR_TOP, 240, 135 - BAR_TOP, 0x08A4);   // 地面延伸色
-  canvas.drawFastHLine(0, BAR_TOP - 1, 240, 0xD3AB);          // 分隔线(Claude橙)
   // 拼音输入候选栏(组合中时显示在输入区上方)
   if (pinyinIME.isComposing() || pinyinIME.hasCandidates()) {
     canvas.setFont(&fonts::efontCN_12);
