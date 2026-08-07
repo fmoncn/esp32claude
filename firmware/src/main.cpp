@@ -55,7 +55,7 @@ static float roamX = 120, targetX = 120;
 static int facing = 1, roamMode = 1;
 static uint32_t roamUntil = 0;
 
-static const int GROUND = 90, BAR_TOP = 93, BAR_Y = 96, LH = 12, VIS = 3, BARW = 232;  // LH=行间距0
+static const int GROUND = 90, BAR_TOP = 75, BAR_Y = 78, LH = 11, VIS = 5, BARW = 232;  // 一屏5行,紧凑
 
 static int curHour() { struct tm t; if (!getLocalTime(&t, 0)) return -1; return t.tm_hour; }
 

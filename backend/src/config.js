@@ -30,7 +30,7 @@ export const LIMITS = {
   shortTermMessages: 12, // 保留最近 N 条原始消息(≈6 轮)
   summarizeWhenOver: 16, // 超过这个长度就把旧对话折叠进长期摘要
   maxFacts: 30, // 长期事实条数上限
-  replyMaxChars: 320, // 回复长度上限,适配小屏
+  replyMaxChars: 60, // 回复长度上限,适配小屏(60字以内,少用符号/代码)
   userTextMaxChars: 500, // 单次输入上限
 };
 
