@@ -105,6 +105,26 @@ static void render() {
       canvas.fillRect(wx + i * 3, wy - bh, 2, bh, (up && i < bars) ? ac : 0x39C7); }
     if (!up) { canvas.drawLine(wx, 2, wx + 10, 10, 0xF800); canvas.drawLine(wx + 10, 2, wx, 10, 0xF800); } }
 
+  // 右上角电池电量图标(百分比填充;充电时绿色闪烁)
+  { const int bx = 206, by = 2, bw = 15, bh = 9;  // 电池位置(WiFi 图标左侧)
+    int level = M5.Power.getBatteryLevel();
+    if (level < 0) level = 0; if (level > 100) level = 100;
+    bool chg = M5.Power.isCharging();
+    uint16_t col = level <= 20 ? 0xF800 : 0x07E0;  // 低电量红,正常绿
+    // 电池外壳
+    canvas.drawRect(bx, by, bw, bh, 0x7BEF);
+    canvas.fillRect(bx + bw, by + 2, 2, bh - 4, 0x7BEF);  // 正极凸点
+    // 电量填充(4格)
+    int filled = (level + 24) / 25;  // 0-4 格
+    for (int i = 0; i < 4; i++) {
+      if (i < filled) {
+        if (chg) canvas.fillRect(bx + 2 + i * 3, by + 2, 2, bh - 4, (millis() / 400) % 2 ? col : 0x39C7);  // 充电闪烁
+        else canvas.fillRect(bx + 2 + i * 3, by + 2, 2, bh - 4, col);
+      }
+      else canvas.fillRect(bx + 2 + i * 3, by + 2, 2, bh - 4, 0x39C7);  // 空格
+    }
+  }
+
   // 对话框(背景=地面延伸色,与场景一体化;文字=Claude 橙色)
   canvas.fillRect(0, BAR_TOP, 240, 135 - BAR_TOP, 0x08A4);   // 地面延伸色
   // 拼音输入候选栏(组合中时显示在输入区上方)
@@ -291,8 +311,22 @@ static void handleKeyboard() {
     }
     return;
   }
+  // 退格(提前处理,避免退格键产生的字符污染 for 循环的 input)
+  if (st.del) {
+    if (pinyinIME.isComposing()) pinyinIME.backspace();      // 拼音组合中→删拼音字母
+    else if (!input.empty()) {
+      input.pop_back();                                       // 英文/普通→删最后一个字符
+    }
+    return;
+  }
   // ---- 输入分流(中文拼音 / 英文) ----
   for (char c : st.word) {
+    if (c == 0x2a || c == 0x08) continue;  // 过滤退格键 HID 值,避免乱码框
+    if (c == 0x00) {  // Esc 键 → 退出回 launcher
+      setReply("退出中…回到 launcher"); render();
+      bootBackToLauncher();
+      setReply("当前是整机直刷模式,没有 launcher 可回。"); return;
+    }
     if (c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z') {
       if (gInputMode) { pinyinIME.addChar(c); }  // 中文→拼音
       else { input += c; gAutoScroll = false; }  // 英文→直接上屏
@@ -319,11 +353,6 @@ static void handleKeyboard() {
     if (pinyinIME.isComposing()) { input += pinyinIME.getComposing(); pinyinIME.clear(); }  // 标点→上屏拼音
     gAutoScroll = false;  // 用户开始打字→停止循环滚动
     input += c;
-  }
-  // 退格
-  if (st.del) {
-    if (pinyinIME.isComposing()) pinyinIME.backspace();
-    else if (!input.empty()) input.pop_back();
   }
   // 回车
   if (st.enter) {
