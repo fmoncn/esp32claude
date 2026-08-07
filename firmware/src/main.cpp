@@ -126,23 +126,6 @@ static void render() {
     }
   }
 
-  // 场景卡片区(HUD 下方): 切换场景显示对应 Dell Hub 信息卡片
-  { const int cx = 4, cy = 50, cw = 232, ch = 34;
-    uint16_t cbg = canvas.color565(8, 18, 34), cln = canvas.color565(53, 214, 255);
-    canvas.fillRect(cx, cy, cw, ch, cbg);
-    canvas.drawRect(cx, cy, cw, ch, cln);
-    // 标题(左)+ 卡片类型
-    canvas.setTextColor(cln, cbg); canvas.setCursor(cx + 6, cy + 2);
-    canvas.print(Hub::cur().title);
-    canvas.setTextColor(0xD3AB, cbg);  // Claude橙数据
-    if (Hub::cur().has) {
-      canvas.setCursor(cx + 6, cy + 16); canvas.print(Hub::cur().line1);
-      canvas.setCursor(cx + 6, cy + 28); canvas.print(Hub::cur().line2);
-    } else {
-      canvas.setCursor(cx + 6, cy + 16); canvas.print(Hub::cur().line1);
-    }
-  }
-
   // 对话框(背景=地面延伸色,与场景一体化;文字=Claude 橙色)
   canvas.fillRect(0, BAR_TOP, 240, 135 - BAR_TOP, 0x08A4);   // 地面延伸色
   // 拼音输入候选栏(组合中时显示在输入区上方)

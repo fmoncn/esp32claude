@@ -4,6 +4,7 @@
 #include <math.h>
 #include <cstring>
 #include "weather.h"
+#include "dell_hub.h"
 
 // 混搭风「像素全息工程台」:深蓝底(蓝图) + 青线框网格 + 霓虹色(赛博) + 像素块 + 金(角色)。
 // 10 场景(室内3 + 室外7),全息投影概念,统一风格。从已验证的网页预览 1:1 移植。
@@ -150,31 +151,46 @@ inline void draw(M5Canvas& c, uint32_t ms, int idx, int roamX) {
   c.drawEllipse(roamX, GROUND, 24, 4, c.color565(53, 160, 200));                            // 落地光圈
 }
 
-/* ---------- 统一 HUD:时钟/日期/天气/亲密度(全真实,14px紧凑2行) ---------- */
+/* ---------- 统一 HUD:场景0=时钟/天气, 其他=场景卡片(Dell Hub) ---------- */
 inline void drawPanels(M5Canvas& c, int idx, int intimacy) {
   const int X = 4, Y = 4, W = 124, H = 42;
   uint16_t bgp = c.color565(8, 18, 34), ln = c.color565(53, 214, 255), scr = c.color565(223, 244, 255),
            ne = c.color565(255, 58, 140), dim = c.color565(120, 150, 175);
   c.fillRect(X, Y, W, H, bgp); c.drawRect(X, Y, W, H, ln);
-  static const char* WD[] = {"日", "一", "二", "三", "四", "五", "六"};
-  struct tm tmv; bool ht = getLocalTime(&tmv, 0);
-  char hhmm[8], date[24];
-  if (ht) { snprintf(hhmm, sizeof(hhmm), "%02d:%02d", tmv.tm_hour, tmv.tm_min);
-    snprintf(date, sizeof(date), "%d/%d 周%s", tmv.tm_mon + 1, tmv.tm_mday, WD[(tmv.tm_wday >= 0 && tmv.tm_wday < 7) ? tmv.tm_wday : 0]); }
-  else { strcpy(hhmm, "--:--"); strcpy(date, "--"); }
-  c.setFont(&fonts::efontCN_14);
-  // 行1:时钟(大字) + 天气图标 + 温度
-  c.setTextColor(scr, bgp); c.setCursor(X + 4, Y + 1); c.print(hhmm);
-  wxIcon(c, X + 66, Y + 0, WX::cur().cat, (float)millis() / 1000);
-  c.setTextColor(scr, bgp); c.setCursor(X + 86, Y + 1);
-  if (WX::cur().t > -100) c.printf("%d°", WX::cur().t); else c.print("--");
-  // 行2:日期 + 天气描述(合并一行); 行距 19px
-  c.setTextColor(ln, bgp); c.setCursor(X + 4, Y + 20); c.print(date);
-  c.setTextColor(dim, bgp);
-  if (WX::cur().label[0]) { c.print(" "); c.print(WX::cur().label); }
-  // 亲密度细条(底部)
-  c.fillRect(X + 4, Y + 36, W - 8, 2, c.color565(40, 50, 64));
-  if (intimacy >= 0) c.fillRect(X + 4, Y + 36, (W - 8) * (intimacy > 100 ? 100 : intimacy) / 100, 2, ne);
+
+  if (idx == 0) {
+    // 场景0(工作室): 保留原 HUD(时钟/天气/日期/亲密度)
+    static const char* WD[] = {"日", "一", "二", "三", "四", "五", "六"};
+    struct tm tmv; bool ht = getLocalTime(&tmv, 0);
+    char hhmm[8], date[24];
+    if (ht) { snprintf(hhmm, sizeof(hhmm), "%02d:%02d", tmv.tm_hour, tmv.tm_min);
+      snprintf(date, sizeof(date), "%d/%d 周%s", tmv.tm_mon + 1, tmv.tm_mday, WD[(tmv.tm_wday >= 0 && tmv.tm_wday < 7) ? tmv.tm_wday : 0]); }
+    else { strcpy(hhmm, "--:--"); strcpy(date, "--"); }
+    c.setFont(&fonts::efontCN_14);
+    c.setTextColor(scr, bgp); c.setCursor(X + 4, Y + 1); c.print(hhmm);
+    wxIcon(c, X + 66, Y + 0, WX::cur().cat, (float)millis() / 1000);
+    c.setTextColor(scr, bgp); c.setCursor(X + 86, Y + 1);
+    if (WX::cur().t > -100) c.printf("%d°", WX::cur().t); else c.print("--");
+    c.setTextColor(ln, bgp); c.setCursor(X + 4, Y + 20); c.print(date);
+    c.setTextColor(dim, bgp);
+    if (WX::cur().label[0]) { c.print(" "); c.print(WX::cur().label); }
+    c.fillRect(X + 4, Y + 36, W - 8, 2, c.color565(40, 50, 64));
+    if (intimacy >= 0) c.fillRect(X + 4, Y + 36, (W - 8) * (intimacy > 100 ? 100 : intimacy) / 100, 2, ne);
+  } else {
+    // 其他场景: 显示 Dell Hub 场景卡片(替代时钟/天气)
+    c.setFont(&fonts::efontCN_14);
+    // 行1: 卡片标题(亮青)
+    c.setTextColor(ln, bgp); c.setCursor(X + 4, Y + 1); c.print(Hub::cur().title);
+    // 行2/3: 卡片数据(Claude橙/暗色), 紧凑
+    c.setTextColor(0xD3AB, bgp);  // Claude橙
+    if (Hub::cur().has && Hub::cur().line1[0]) {
+      c.setCursor(X + 4, Y + 17); c.print(Hub::cur().line1);
+      c.setTextColor(dim, bgp);
+      if (Hub::cur().line2[0]) { c.setCursor(X + 4, Y + 31); c.print(Hub::cur().line2); }
+    } else {
+      c.setCursor(X + 4, Y + 17); c.print("卡片数据获取中…");
+    }
+  }
 }
 
 }  // namespace Scenes
