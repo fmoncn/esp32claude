@@ -5,6 +5,7 @@
 #include <time.h>
 #include "esp_partition.h"
 #include "esp_system.h"
+#include "esp_sleep.h"
 #include <vector>
 #include <string>
 #include "config.h"
@@ -25,6 +26,8 @@ static std::string input, reply = "请输入文本...", petName = "小豆丁", e
 static std::vector<std::string> replyLines;
 static int scrollTop = 0;
 static uint8_t gBrightness = 50;          // 屏幕亮度 0-255(默认 50);-= 键调
+static uint32_t gIdleSince = 0;           // 最后操作时间(省电关机计时)
+static bool gShutdownWarned = false;      // 已显示关机提示
 static bool gAutoScroll = false;          // 自动滚动中(长回复)
 static uint32_t gAutoScrollNext = 0;      // 下次推进时间
 static int gAutoScrollTarget = 0;         // 目标滚动位置(底部)
@@ -176,6 +179,7 @@ void setup() {
   M5Cardputer.begin(cfg, true);
   M5Cardputer.Display.setRotation(1);
   M5Cardputer.Display.setBrightness(gBrightness);  // 默认亮度 50/255
+  gIdleSince = millis();  // 省电关机:开机即开始空闲计时
   canvas.setColorDepth(16); canvas.createSprite(240, 135);
   LittleFS.begin(false);  // 别 format-on-fail(launcher 模式下无 littlefs 分区,精灵已在 SD)
   // 修复: 精灵一律走内置 Flash(LittleFS), 不用 SD 卡。
@@ -203,6 +207,7 @@ void setup() {
 // 把一句话交给后台核去思考+朗读;立即返回,主循环继续跑动画。打字和语音共用
 static void submitJob(const std::string& msg) {
   if (msg.empty()) return;
+  gIdleSince = millis();  // 对话=有操作,重置省电计时
   xSemaphoreTake(gMtx, portMAX_DELAY);
   gJobMsg = msg; gJobReady = true;
   xSemaphoreGive(gMtx);
@@ -257,6 +262,7 @@ static void handleKeyboard() {
   if (millis() < kbdIgnoreUntil) return;
   if (gPhase != PH_IDLE) return;  // 思考/说话中不收键(也防喇叭噪声触发假按键)
   if (!(M5Cardputer.Keyboard.isChange() && M5Cardputer.Keyboard.isPressed())) return;
+  gIdleSince = millis();  // 按键=有操作,重置省电计时
   auto st = M5Cardputer.Keyboard.keysState();
   // Ctrl 键: 切换场景(按一下换一个)
   if (st.ctrl) { gAutoScene = false; gSceneIdx = (gSceneIdx + 1) % Scenes::count();
@@ -337,9 +343,29 @@ static void roamStep(uint32_t now, int hour) {
   }
 }
 
+// 省电关机:10分钟无操作 → 提示 → M5PM1 断电关机(拨 off/on 开关开机)
+static void checkIdleShutdown() {
+  uint32_t now = millis();
+  const uint32_t IDLE_MS = 600000UL;       // 10 分钟
+  if (now - gIdleSince < IDLE_MS) return;  // 仍在活跃期内
+
+  // 超过 10 分钟:显示关机提示
+  if (!gShutdownWarned) {
+    gShutdownWarned = true;
+    setReply("闲置 10 分钟,即将关机…");
+    render();
+    delay(3000);  // 短暂提示
+  }
+  // 真正断电关机(M5PM1 切断 ESP32 电源;物理 off/on 开关重新上电)
+  M5.Power.M5pm1.powerOff();
+  // 若 powerOff 失败(未初始化等),兜底深睡
+  esp_deep_sleep_start();
+}
+
 void loop() {
   M5Cardputer.update();
   handleKeyboard();
+  checkIdleShutdown();
   uint32_t now = millis();
 
   if (gAutoScene) { int want = Scenes::autoIdx(curHour()); if (want != gSceneIdx) gSceneIdx = want; }  // 室内按作息自动切
