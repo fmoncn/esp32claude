@@ -24,6 +24,9 @@ static SpritePlayer player;
 static std::string input, reply = "我在,主人。", petName = "小豆丁", emotion = "neutral";
 static std::vector<std::string> replyLines;
 static int scrollTop = 0;
+static bool gAutoScroll = false;          // 自动滚动中(长回复)
+static uint32_t gAutoScrollNext = 0;      // 下次推进时间
+static int gAutoScrollTarget = 0;         // 目标滚动位置(底部)
 static uint32_t kbdIgnoreUntil = 0;
 
 // 思考/说话放到后台核(core 0),主循环(core 1)永不阻塞 → 背景动画一直跑
@@ -52,7 +55,7 @@ static float roamX = 120, targetX = 120;
 static int facing = 1, roamMode = 1;
 static uint32_t roamUntil = 0;
 
-static const int GROUND = 90, BAR_TOP = 93, BAR_Y = 96, LH = 13, VIS = 3, BARW = 232;
+static const int GROUND = 90, BAR_TOP = 93, BAR_Y = 96, LH = 12, VIS = 3, BARW = 232;  // LH=行间距0
 
 static int curHour() { struct tm t; if (!getLocalTime(&t, 0)) return -1; return t.tm_hour; }
 
@@ -74,6 +77,12 @@ static std::vector<std::string> wrapLines(const std::string& s, int maxW) {
 static void setReply(const std::string& t) {
   reply = t; canvas.setFont(&fonts::efontCN_12);
   replyLines = wrapLines(petName + "：" + t, BARW); scrollTop = 0;
+  // 长回复自动滚动到底部(输出完所有文字后,逐行滚动显示全部内容)
+  if ((int)replyLines.size() > VIS) {
+    gAutoScroll = true;
+    gAutoScrollTarget = (int)replyLines.size() - VIS;
+    gAutoScrollNext = millis() + 500;  // 稍等再开始滚
+  } else { gAutoScroll = false; }
 }
 static void setTransient(const char* a, uint32_t ms) { transientAction = a; transientUntil = millis() + ms; }
 
@@ -240,8 +249,8 @@ static void handleKeyboard() {
   auto st = M5Cardputer.Keyboard.keysState();
   if (st.fn) {
     for (char c : st.word) {
-      if (c == ',') { if (scrollTop > 0) scrollTop--; return; }
-      if (c == '.') { if (scrollTop + VIS < (int)replyLines.size()) scrollTop++; return; }
+      if (c == ',') { gAutoScroll = false; if (scrollTop > 0) scrollTop--; return; }
+      if (c == '.') { gAutoScroll = false; if (scrollTop + VIS < (int)replyLines.size()) scrollTop++; return; }
       if (c == '[') { gAutoScene = false; gSceneIdx = (gSceneIdx + Scenes::count() - 1) % Scenes::count();
                       setReply(std::string("场景：") + Scenes::name(gSceneIdx)); return; }
       if (c == ']') { gAutoScene = false; gSceneIdx = (gSceneIdx + 1) % Scenes::count();
@@ -325,6 +334,14 @@ void loop() {
     emotion = em; if (!nm.empty()) petName = nm;
     setReply(rp);
     setTransient(emotionToAction(emotion), 6000);  // 说完后情绪再停留一会儿
+  }
+
+  // 长回复自动滚动:逐行滚动到底部,显示全部内容后停止
+  if (gAutoScroll) {
+    if (now >= gAutoScrollNext) {
+      if (scrollTop < gAutoScrollTarget) { scrollTop++; gAutoScrollNext = now + 900; }
+      else gAutoScroll = false;  // 已滚到底,停止
+    }
   }
 
   if (gPhase == PH_THINKING) {
