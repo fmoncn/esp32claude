@@ -18,6 +18,7 @@ enum CardType {
   CARD_VPS,        // VPS 系统
   CARD_VPSMEM,     // VPS 内存
   CARD_QUOTA,      // Claude 额度
+  CARD_HOLD,       // ETF持仓(总持仓/今日盈亏)
   CARD_COUNT,
 };
 
@@ -45,7 +46,7 @@ inline CardType cardForScene(int idx) {
     case 5: return CARD_VPS;      // 草原   → VPS系统
     case 6: return CARD_QUOTA;    // 海洋   → Claude额度
     case 7: return CARD_QUOTA;    // 雪山   → Claude额度
-    case 8: return CARD_DELL;     // 森林   → Dell系统
+    case 8: return CARD_HOLD;     // 森林   → ETF持仓(总持仓/今日盈亏)
     default: return CARD_VPSMEM;  // 太空   → VPS内存
   }
 }
@@ -156,6 +157,35 @@ inline bool fetch(int sceneIdx) {
       fmtReset(r7, r7s, sizeof(r7s));
       snprintf(c.line1, sizeof(c.line1), "Claude %d%%(%s)", p5, r5s);
       snprintf(c.line2, sizeof(c.line2), "%d%%(%s)", p7, r7s);
+      c.has = true;
+      break;
+    }
+    case CARD_HOLD: {
+      // ETF持仓: 第1行=总持仓(万), 第2行=今日盈亏(红涨绿跌)
+      // 数据源: etf-monitor(4004) /api/data, 总持仓=total_invested,
+      //         今日盈亏=Σ(amount×change_pct)
+      if (WiFi.status() != WL_CONNECTED) { snprintf(c.line1, sizeof(c.line1), "持仓获取中…"); return false; }
+      WiFiClient client; HTTPClient http;
+      if (!http.begin(client, "http://LAN_IP:4004/api/data")) { snprintf(c.line1, sizeof(c.line1), "持仓获取中…"); return false; }
+      http.setTimeout(6000);
+      int code = http.GET();
+      if (code != 200) { http.end(); snprintf(c.line1, sizeof(c.line1), "持仓获取中…"); return false; }
+      std::string body = http.getString().c_str();
+      http.end();
+      JsonDocument d;
+      if (body.empty() || deserializeJson(d, body)) { snprintf(c.line1, sizeof(c.line1), "持仓获取中…"); return false; }
+      double total = d["snapshot"]["total_invested"].as<double>();
+      // 累加今日盈亏 = Σ(amount × change_pct)
+      double dayPnl = 0;
+      JsonArray det = d["snapshot"]["details"].as<JsonArray>();
+      for (JsonObject h : det) {
+        double amt = h["amount"].as<double>();
+        double chg = h["change_pct"].as<double>();
+        dayPnl += amt * chg / 100.0;
+      }
+      snprintf(c.line1, sizeof(c.line1), "总持仓 %.2f万", total / 10000.0);
+      snprintf(c.line2, sizeof(c.line2), "盈亏 %+.0f元", dayPnl);
+      c.trend = (dayPnl > 0.5) ? 1 : (dayPnl < -0.5) ? -1 : 0;  // 红涨绿跌
       c.has = true;
       break;
     }
