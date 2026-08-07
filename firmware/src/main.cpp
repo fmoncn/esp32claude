@@ -26,7 +26,6 @@ static std::vector<std::string> replyLines;
 static int scrollTop = 0;
 static bool gAutoScroll = false;          // 自动滚动中(长回复)
 static uint32_t gAutoScrollNext = 0;      // 下次推进时间
-static bool gShowInput = true;            // 输入框/对话框显示(Alt 切换)
 static int gAutoScrollTarget = 0;         // 目标滚动位置(底部)
 static uint32_t kbdIgnoreUntil = 0;
 
@@ -101,14 +100,13 @@ static void render() {
       canvas.fillRect(wx + i * 3, wy - bh, 2, bh, (up && i < bars) ? ac : 0x39C7); }
     if (!up) { canvas.drawLine(wx, 2, wx + 10, 10, 0xF800); canvas.drawLine(wx + 10, 2, wx, 10, 0xF800); } }
 
-  // 对话框输入框(Alt 键可显示/隐藏;隐藏时连黑色背景一起消失)
-  if (gShowInput) {
-  canvas.fillRect(0, BAR_TOP, 240, 135 - BAR_TOP, 0x0000);
-  canvas.drawFastHLine(0, BAR_TOP - 1, 240, 0x18C3);
+  // 对话框(背景=地面延伸色,与场景一体化;文字=Claude 橙色)
+  canvas.fillRect(0, BAR_TOP, 240, 135 - BAR_TOP, 0x08A4);   // 地面延伸色
+  canvas.drawFastHLine(0, BAR_TOP - 1, 240, 0xD3AB);          // 分隔线(Claude橙)
   // 拼音输入候选栏(组合中时显示在输入区上方)
   if (pinyinIME.isComposing() || pinyinIME.hasCandidates()) {
     canvas.setFont(&fonts::efontCN_12);
-    canvas.setTextColor(0xFD20, 0x0000);
+    canvas.setTextColor(0xFC4B, 0x08A4);   // 亮橙
     canvas.setCursor(4, BAR_Y);
     canvas.print("[");
     canvas.print(pinyinIME.getComposing());
@@ -128,42 +126,40 @@ static void render() {
       canvas.print(pg);
     }
   } else if (!input.empty()) {
-    // 输入显示 2 行(长输入自动换行)
-    canvas.setTextColor(0x07FF, 0x0000);
+    // 输入显示 2 行(长输入自动换行);光标一闪一闪(终端风格)
+    canvas.setTextColor(0xD3AB, 0x08A4);   // Claude橙
     auto ilines = wrapLines("> " + input, BARW);
     if (ilines.empty()) ilines.push_back("> ");
     for (int i = 0; i < 2 && i < (int)ilines.size(); i++) {
       canvas.setCursor(4, BAR_Y + i * LH);
       canvas.print(ilines[i].c_str());
-      if (i == (int)ilines.size() - 1) canvas.print("_");  // 光标
+      if (i == (int)ilines.size() - 1) {
+        if ((millis() / 500) % 2) canvas.print("▍");  // 终端闪烁光标(方块)
+      }
     }
   } else {
     for (int i = 0; i < VIS; i++) {
       int li = scrollTop + i;
       if (li < 0 || li >= (int)replyLines.size()) break;
-      canvas.setTextColor(0xCE7C, 0x0000); canvas.setCursor(4, BAR_Y + i * LH);
+      canvas.setTextColor(0xD3AB, 0x08A4); canvas.setCursor(4, BAR_Y + i * LH);   // Claude橙
       canvas.print(replyLines[li].c_str());
-      if (li == 0) { canvas.setTextColor(0x3FE6, 0x0000); canvas.setCursor(4, BAR_Y); canvas.print((petName + "：").c_str()); }
+      if (li == 0) { canvas.setTextColor(0xFC4B, 0x08A4); canvas.setCursor(4, BAR_Y); canvas.print((petName + "：").c_str()); }  // 亮橙
     }
     if (scrollTop > 0) canvas.fillTriangle(232, BAR_Y + 2, 236, BAR_Y + 2, 234, BAR_Y - 2, 0x7BCF);
     if (scrollTop + VIS < (int)replyLines.size())
       canvas.fillTriangle(232, BAR_Y + 2 * LH - 2, 236, BAR_Y + 2 * LH - 2, 234, BAR_Y + 2 * LH + 2, 0x7BCF);
-  }
-  }  // end gShowInput
-  else {  // 隐藏对话框:用场景地面色填满下半屏,视觉连续
-    canvas.fillRect(0, BAR_TOP, 240, 135 - BAR_TOP, canvas.color565(10, 20, 34));
   }
 
   // P1 体验改进: THINKING/SPEAKING 状态加可爱的动态视觉反馈(14岁女孩等待时不会觉得卡死)
   if (gPhase == PH_THINKING) {
     // 思考中: 对话框顶部显示动态省略号 + 气泡提示
     int dots = (millis() / 400) % 4;  // 0,1,2,3 循环
-    canvas.setTextColor(0xFD20, 0x0000);  // 琥珀色
+    canvas.setTextColor(0xD3AB, 0x08A4);  // Claude橙
     canvas.setCursor(4, BAR_Y);
     canvas.print("小豆丁思考中");
     for (int k = 0; k < dots; k++) canvas.print(".");
     // 顶部小气泡
-    canvas.setTextColor(0x3FE6, 0x0000);
+    canvas.setTextColor(0xFC4B, 0x08A4);  // 亮橙
     canvas.setCursor(120, BAR_Y);
     canvas.print("💭");
   }
@@ -264,8 +260,6 @@ static void handleKeyboard() {
   // Ctrl 键: 切换场景(按一下换一个)
   if (st.ctrl) { gAutoScene = false; gSceneIdx = (gSceneIdx + 1) % Scenes::count();
                  setReply(std::string("场景：") + Scenes::name(gSceneIdx)); return; }
-  // Alt 键: 显示/隐藏对话框输入框(按一下隐藏,再按一下呼出)
-  if (st.alt) { gShowInput = !gShowInput; return; }
   if (st.fn) {
     for (char c : st.word) {
       if (c == ',') { gAutoScroll = false; if (scrollTop > 0) scrollTop--; return; }
