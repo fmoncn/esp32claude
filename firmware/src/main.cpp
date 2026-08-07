@@ -208,8 +208,8 @@ void setup() {
   player.begin((fs::FS&)LittleFS); player.setAction("idle");
   pinyinIME.init("/config/pinyin_dict.bin");  // 拼音输入法字典(精简单字,放 LittleFS)
   gMtx = xSemaphoreCreateMutex();
-  // 后台核跑思考+朗读,24KB 栈(HTTPS/TLS 很吃栈),钉在 core 0(主循环在 core 1)
-  xTaskCreatePinnedToCore(brainTask, "brain", 24 * 1024, nullptr, 1, nullptr, 0);
+  // 后台核跑思考+朗读,40KB 栈(TLS/HTTPS + Speaker alloca 都很吃栈),钉在 core 0
+  xTaskCreatePinnedToCore(brainTask, "brain", 40 * 1024, nullptr, 1, nullptr, 0);
   setReply("连接 WiFi 中…"); render();
 
   if (wifiConnect()) {
