@@ -15,9 +15,12 @@
 #include "pinyin_ime.h"
 #include "scenes.h"
 #include "weather.h"
+#include "azure_tts.h"
 
 // TLS + WebSocket 握手很吃栈;加大 loop 任务栈
 SET_LOOP_TASK_STACK_SIZE(32 * 1024);
+
+static bool gVoiceOn = false;  // 语音开关(Fn+V 切换;默认关,文字优先避免TTS耗时)
 
 static M5Canvas canvas(&M5Cardputer.Display);
 static SpritePlayer player;
@@ -255,6 +258,14 @@ static void brainTask(void*) {
         xSemaphoreGive(gMtx);
       }
 
+      // 语音开 + 聊天模式(非翻译) → 播放回复(TTS 经 Dell /tts 流式)
+      if (gVoiceOn && !gTranslate && gResReply != "(在想…)") {
+        std::string say = gResReply;
+        if (say.rfind("(网络", 0) == 0 || say.rfind("(连不", 0) == 0 || say.rfind("(大脑", 0) == 0
+            || say.rfind("(没听", 0) == 0 || say.rfind("(没搞", 0) == 0) say = "";  // 错误提示不朗读
+        if (!say.empty()) TTS::speak(say);
+      }
+
       kbdIgnoreUntil = millis() + 300;  // 回复后冷却,防误触
       gPhase = PH_IDLE;
     }
@@ -309,6 +320,8 @@ static void handleKeyboard() {
                       setReply(std::string("场景：") + Scenes::name(gSceneIdx)); return; }
       if (c == '\\') { gAutoScene = true; gSceneIdx = Scenes::autoIdx(curHour());
                        setReply("场景：跟随作息自动切"); return; }
+      if (c == 'v' || c == 'V') {  // 语音开关(默认关,文字优先)
+        gVoiceOn = !gVoiceOn; setReply(gVoiceOn ? "语音已开启" : "语音已关闭"); return; }
       if (c == 'q' || c == 'Q') {  // 退出回 launcher(二次确认,防手滑重启)
         static uint32_t armUntil = 0;
         if (millis() < armUntil) { setReply("退出中…回到 launcher"); render();
