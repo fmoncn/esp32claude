@@ -73,6 +73,8 @@ public:
     bool isComposing() const { return m_composingLen > 0; }
     bool hasCandidates() const { return m_candCount > 0; }
     bool loaded() const { return m_loaded; }
+    uint32_t getDictLen() const { return m_dictLen; }
+    uint16_t getSyllCount() const { return m_syllCount; }
     int getCandCount() const { return m_candCount; }
     const char* getComposing() const { return m_composing; }
     int getPage() const { return m_candPage; }
@@ -121,7 +123,13 @@ private:
     bool loadDict(const char* path) {
         File f = LittleFS.open(path, "r");
         if (!f) return false;
-        m_dictLen = f.read(m_dict, MAX_DICT);
+        // 循环读满整个字典(File::read 可能一次读不满)
+        m_dictLen = 0;
+        while (f.available() && m_dictLen < MAX_DICT) {
+            int r = f.read(m_dict + m_dictLen, MAX_DICT - m_dictLen);
+            if (r <= 0) break;
+            m_dictLen += r;
+        }
         f.close();
         if (m_dictLen < 2) return false;
         m_syllCount = m_dict[0] | (m_dict[1] << 8);
@@ -154,7 +162,17 @@ private:
         return (const char*)(m_dict + pos);
     }
 
-    // 二分查找, 返回记录索引; -1 = 未找到
+    // 完整字典序比较: k vs key, 返回 -1/0/1 (逐字符, 处理长度)
+    int cmpKey(const char* k, int klen, const char* key, int keyLen) {
+        int n = klen < keyLen ? klen : keyLen;
+        for (int i = 0; i < n; i++) {
+            if (k[i] != key[i]) return (k[i] > key[i]) ? 1 : -1;
+        }
+        if (klen == keyLen) return 0;
+        return klen < keyLen ? -1 : 1;
+    }
+
+    // 二分查找精确匹配(lower_bound 语义): 找第一个 >= key 的, 再验证是否相等
     int findIndex(const char* key, int keyLen) {
         int lo = 0, hi = m_syllCount;
         while (lo < hi) {
@@ -162,14 +180,14 @@ private:
             uint32_t pos = recordOffset(mid);
             uint8_t klen = m_dict[pos];
             const char* k = (const char*)(m_dict + pos + 1);
-            int n = keyLen < (int)klen ? keyLen : (int)klen;
-            int cmp = strncmp(k, key, n);
-            if (cmp == 0) {
-                if (keyLen == (int)klen) return mid;
-                cmp = keyLen < (int)klen ? -1 : 1;
-            }
-            if (cmp < 0) lo = mid + 1;
-            else hi = mid;
+            if (cmpKey(k, klen, key, keyLen) < 0) lo = mid + 1;  // key > k → 往右
+            else hi = mid;                                        // key <= k → 往左
+        }
+        if (lo < m_syllCount) {
+            uint32_t pos = recordOffset(lo);
+            uint8_t klen = m_dict[pos];
+            const char* k = (const char*)(m_dict + pos + 1);
+            if (cmpKey(k, klen, key, keyLen) == 0) return lo;
         }
         return -1;
     }
