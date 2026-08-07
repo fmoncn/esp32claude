@@ -168,8 +168,8 @@ inline void drawPanels(M5Canvas& c, int idx, int intimacy) {
   wxIcon(c, X + 66, Y + 0, WX::cur().cat, (float)millis() / 1000);
   c.setTextColor(scr, bgp); c.setCursor(X + 86, Y + 1);
   if (WX::cur().t > -100) c.printf("%d°", WX::cur().t); else c.print("--");
-  // 行2:日期 + 天气描述(合并一行)
-  c.setTextColor(ln, bgp); c.setCursor(X + 4, Y + 15); c.print(date);
+  // 行2:日期 + 天气描述(合并一行); 行距比字高增大20%(14->17)
+  c.setTextColor(ln, bgp); c.setCursor(X + 4, Y + 18); c.print(date);
   c.setTextColor(dim, bgp);
   if (WX::cur().label[0]) { c.print(" "); c.print(WX::cur().label); }
   // 亲密度细条(底部)
