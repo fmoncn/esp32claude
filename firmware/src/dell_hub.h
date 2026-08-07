@@ -37,19 +37,19 @@ static const char* DELL_HUB = "http://LAN_IP:4000";
 inline Card& cur() { static Card c; return c; }
 inline CardType& cardOfScene() { static CardType t = CARD_QUOTE; return t; }
 
-// 场景 → 卡片映射(10 场景, 4个指数连续场景1-4)
+// 场景 → 卡片映射(场景0=日期/天气原HUD, 指数连续2-5)
 inline CardType cardForScene(int idx) {
   switch (idx % 10) {
-    case 0: return CARD_DELL;     // 工作室 → Dell系统
-    case 1: return CARD_QUOTE;    // 客厅   → 标普500(指数0)
-    case 2: return CARD_QUOTE;    // 卧室   → 纳指100(指数1)
-    case 3: return CARD_QUOTE;    // 高楼   → 上证指数(指数2)
-    case 4: return CARD_QUOTE;    // 沙漠   → 恒生指数(指数3)
-    case 5: return CARD_VPS;      // 草原   → VPS系统
-    case 6: return CARD_ACTION;   // 海洋   → ETF操作(今日无需操作)
-    case 7: return CARD_QUOTA;    // 雪山   → Claude额度
-    case 8: return CARD_HOLD;     // 森林   → ETF持仓(总持仓/今日盈亏)
-    default: return CARD_GAIN;    // 太空   → ETF收益(实盘收益/YTD)
+    case 0: return CARD_DELL;     // 工作室 → 日期/天气(实际用drawPanels原HUD)
+    case 1: return CARD_QUOTA;    // 客厅   → Claude额度
+    case 2: return CARD_QUOTE;    // 卧室   → 标普500(指数0)
+    case 3: return CARD_QUOTE;    // 高楼   → 纳指100(指数1)
+    case 4: return CARD_QUOTE;    // 沙漠   → 上证指数(指数2)
+    case 5: return CARD_QUOTE;    // 草原   → 恒生指数(指数3)
+    case 6: return CARD_HOLD;     // 海洋   → 总持仓/今日盈亏
+    case 7: return CARD_GAIN;     // 雪山   → 实盘收益/YTD
+    case 8: return CARD_ACTION;   // 森林   → 今日无需操作
+    default: return CARD_VPS;     // 太空   → VPS系统
   }
 }
 
@@ -95,8 +95,8 @@ inline bool fetch(int sceneIdx) {
   switch (cardOfScene()) {
     case CARD_QUOTE: {
       // 行情: 每场景1个指数, 第1行=名称+价格, 第2行=涨跌(红涨绿跌)
-      // 连续场景1-4→指数: 1→标普0, 2→纳指1, 3→上证2, 4→恒生3
-      static const int qidx[10] = {0,0,1,2,3,0,0,0,0,0};  // 按场景序号映射指数
+      // 连续场景2-5→指数: 2→标普0, 3→纳指1, 4→上证2, 5→恒生3
+      static const int qidx[10] = {0,0,0,1,2,3,0,0,0,0};  // 按场景序号映射指数
       JsonDocument d;
       if (!getJson("/api/indices", d)) { snprintf(c.line1, sizeof(c.line1), "行情获取中…"); return false; }
       JsonArray arr = d.as<JsonArray>();
