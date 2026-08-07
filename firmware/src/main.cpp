@@ -59,7 +59,7 @@ static float roamX = 120, targetX = 120;
 static int facing = 1, roamMode = 1;
 static uint32_t roamUntil = 0;
 
-static const int GROUND = 90, BAR_TOP = 93, BAR_Y = 96, LH = 12, VIS = 3, BARW = 232;  // 回复3行/屏
+static const int GROUND = 90, BAR_TOP = 85, BAR_Y = 88, LH = 14, VIS = 3, BARW = 232;  // 14px字,回复3行,对话框略高
 
 static int curHour() { struct tm t; if (!getLocalTime(&t, 0)) return -1; return t.tm_hour; }
 
@@ -79,7 +79,7 @@ static std::vector<std::string> wrapLines(const std::string& s, int maxW) {
 }
 
 static void setReply(const std::string& t) {
-  reply = t; canvas.setFont(&fonts::efontCN_12);
+  reply = t; canvas.setFont(&fonts::efontCN_14);
   replyLines = wrapLines(petName + "：" + t, BARW); scrollTop = 0;
   // 长回复自动滚动到底部(输出完所有文字后,逐行滚动显示全部内容)
   if ((int)replyLines.size() > VIS) {
@@ -95,7 +95,7 @@ static void render() {
   Scenes::drawPanels(canvas, gSceneIdx, gIntimacy);        // HUD:时钟/日期/天气/亲密度(全真实)
   player.draw(canvas, (int)roamX - SPR_W / 2, GROUND - SPR_H, facing);  // 角色在最前
 
-  canvas.setFont(&fonts::efontCN_12);
+  canvas.setFont(&fonts::efontCN_14);
   // 右上角 WiFi 信号(4 格随强度);未连显示红叉
   { const int wx = 222, wy = 10; bool up = WiFi.status() == WL_CONNECTED; long rs = up ? WiFi.RSSI() : 0;
     int bars = !up ? 0 : (rs >= -55 ? 4 : rs >= -65 ? 3 : rs >= -73 ? 2 : 1);
@@ -108,7 +108,7 @@ static void render() {
   canvas.fillRect(0, BAR_TOP, 240, 135 - BAR_TOP, 0x08A4);   // 地面延伸色
   // 拼音输入候选栏(组合中时显示在输入区上方)
   if (pinyinIME.isComposing() || pinyinIME.hasCandidates()) {
-    canvas.setFont(&fonts::efontCN_12);
+    canvas.setFont(&fonts::efontCN_14);
     canvas.setTextColor(0xFC4B, 0x08A4);   // 亮橙
     canvas.setCursor(4, BAR_Y);
     canvas.print("[");
