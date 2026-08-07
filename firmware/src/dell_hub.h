@@ -65,10 +65,15 @@ static bool getJson(const char* path, JsonDocument& doc) {
   return ok;
 }
 
-// 格式化重置剩余时间: <1天→小时(x.xh), 否则→天(x.xd)
+// 格式化重置剩余时间(Claude格式): <1天→XhYm, 否则→XdYh
 static void fmtReset(long sec, char* buf, int n) {
-  if (sec < 86400) snprintf(buf, n, "%.1fh", sec / 3600.0);
-  else snprintf(buf, n, "%.1fd", sec / 86400.0);
+  if (sec < 86400) {
+    long h = sec / 3600, m = (sec % 3600) / 60;
+    snprintf(buf, n, "%ldh%02ldm", h, m);
+  } else {
+    long d = sec / 86400, h = (sec % 86400) / 3600;
+    snprintf(buf, n, "%ldd%02ldh", d, h);
+  }
 }
 
 // 拉取并填充当前场景对应的卡片数据
@@ -80,72 +85,69 @@ inline bool fetch(int sceneIdx) {
 
   switch (cardOfScene()) {
     case CARD_QUOTE: {
-      // 行情: line1=标普 +0.47%  line2=纳指 +0.90% (去掉价格, 精简)
+      // 行情分2页(按场景奇偶): 页0=纳指/标普  页1=恒指/上证
       JsonDocument d;
       if (!getJson("/api/indices", d)) { snprintf(c.line1, sizeof(c.line1), "行情获取中…"); return false; }
       JsonArray arr = d.as<JsonArray>();
       int n = arr.size(); if (n > 4) n = 4;
-      if (n > 0) {
-        JsonObject o0 = arr[0]; JsonObject o1 = arr[1];
-        const char* n0 = o0["name"] | ""; const char* n1 = o1["name"] | "";
-        float g0 = o0["pct"] | 0; float g1 = o1["pct"] | 0;
-        snprintf(c.line1, sizeof(c.line1), "%s %+.1f%%", n0, g0);
-        if (n > 1) snprintf(c.line2, sizeof(c.line2), "%s %+.1f%%", n1, g1);
+      bool pg2 = (sceneIdx % 2) == 1;   // 奇数场景→第2页
+      if (n >= 4) {
+        int i1 = pg2 ? 3 : 1;  // line1: 页0=纳指[1], 页1=恒指[3]
+        int i2 = pg2 ? 2 : 0;  // line2: 页0=标普[0], 页1=上证[2]
+        const char* nm1 = arr[i1]["name"] | ""; float pr1 = arr[i1]["price"] | 0; float g1 = arr[i1]["pct"] | 0;
+        const char* nm2 = arr[i2]["name"] | ""; float pr2 = arr[i2]["price"] | 0; float g2 = arr[i2]["pct"] | 0;
+        snprintf(c.line1, sizeof(c.line1), "%s%.0f %+.1f%%", nm1, pr1, g1);
+        snprintf(c.line2, sizeof(c.line2), "%s%.0f %+.1f%%", nm2, pr2, g2);
         c.has = true;
       }
       break;
     }
     case CARD_DELL: {
-      // Dell系统: line1=CPU 8% 内存47%  line2=盘50/15 运行69d
+      // Dell: line1=DELL内存 43%  line2=系统盘 50%
       JsonDocument d;
       if (!getJson("/api/sysinfo", d)) { snprintf(c.line1, sizeof(c.line1), "系统信息获取中…"); return false; }
-      int cpu = d["cpu"]["pct"] | -1;
       int mem = d["mem"]["pct"] | -1;
       int dsys = d["disk_sys"]["pct"] | -1;
-      int ddat = d["disk_data"]["pct"] | -1;
-      float up = d["uptime_days"] | -1;
-      snprintf(c.line1, sizeof(c.line1), "CPU %d%% 内存%d%%", cpu, mem);
-      snprintf(c.line2, sizeof(c.line2), "盘%d/%d 运行%.0fd", dsys, ddat, up);
+      snprintf(c.line1, sizeof(c.line1), "DELL内存 %d%%", mem);
+      snprintf(c.line2, sizeof(c.line2), "系统盘 %d%%", dsys);
       c.has = true;
       break;
     }
     case CARD_VPS: {
-      // VPS系统: line1=CPU 2% 磁盘47%  line2=内存 60%
+      // VPS: line1=VPS内存 50%  line2=磁盘 47%
       JsonDocument d;
       if (!getJson("/api/sysinfo/vps", d)) { snprintf(c.line1, sizeof(c.line1), "VPS 获取中…"); return false; }
-      int cpu = d["cpu"]["pct"] | -1;
-      int disk = d["disk_sys"]["pct"] | -1;
       int mem = d["mem"]["pct"] | -1;
-      snprintf(c.line1, sizeof(c.line1), "CPU %d%% 磁盘%d%%", cpu, disk);
-      snprintf(c.line2, sizeof(c.line2), "内存 %d%%", mem);
+      int disk = d["disk_sys"]["pct"] | -1;
+      snprintf(c.line1, sizeof(c.line1), "VPS内存 %d%%", mem);
+      snprintf(c.line2, sizeof(c.line2), "磁盘 %d%%", disk);
       c.has = true;
       break;
     }
     case CARD_VPSMEM: {
-      // VPS内存: line1=内存 60%  line2=0.6/0.9G
+      // VPS内存(海洋): line1=VPS内存 50%  line2=磁盘 47%
       JsonDocument d;
       if (!getJson("/api/sysinfo/vps", d)) { snprintf(c.line1, sizeof(c.line1), "内存获取中…"); return false; }
       int mem = d["mem"]["pct"] | -1;
-      float used = d["mem"]["used_gb"] | 0;
-      float total = d["mem"]["total_gb"] | 0;
-      snprintf(c.line1, sizeof(c.line1), "内存 %d%%", mem);
-      snprintf(c.line2, sizeof(c.line2), "%.1f/%.1fG", used, total);
+      int disk = d["disk_sys"]["pct"] | -1;
+      snprintf(c.line1, sizeof(c.line1), "VPS内存 %d%%", mem);
+      snprintf(c.line2, sizeof(c.line2), "磁盘 %d%%", disk);
       c.has = true;
       break;
     }
     case CARD_QUOTA: {
-      // Claude额度: line1=5|100%|4.9h  line2=7|0%|6.9d
+      // Claude额度: line1=Claude 89%(4h46m)  line2=99%(6d21h)
       JsonDocument d;
       if (!getJson("/api/sysinfo/vps", d)) { snprintf(c.line1, sizeof(c.line1), "额度获取中…"); return false; }
       int p5 = d["claude"]["5h"]["pct"] | -1;
       int p7 = d["claude"]["7d"]["pct"] | -1;
       long r5 = d["claude"]["5h"]["reset_in_s"] | 0;
       long r7 = d["claude"]["7d"]["reset_in_s"] | 0;
-      char r5s[8], r7s[8];
+      char r5s[12], r7s[12];
       fmtReset(r5, r5s, sizeof(r5s));
       fmtReset(r7, r7s, sizeof(r7s));
-      snprintf(c.line1, sizeof(c.line1), "5|%d%%|%s", p5, r5s);
-      snprintf(c.line2, sizeof(c.line2), "7|%d%%|%s", p7, r7s);
+      snprintf(c.line1, sizeof(c.line1), "Claude %d%%(%s)", p5, r5s);
+      snprintf(c.line2, sizeof(c.line2), "%d%%(%s)", p7, r7s);
       c.has = true;
       break;
     }

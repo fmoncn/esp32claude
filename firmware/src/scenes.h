@@ -177,12 +177,12 @@ inline void drawPanels(M5Canvas& c, int idx, int intimacy) {
     c.fillRect(X + 4, Y + 36, W - 8, 2, c.color565(40, 50, 64));
     if (intimacy >= 0) c.fillRect(X + 4, Y + 36, (W - 8) * (intimacy > 100 ? 100 : intimacy) / 100, 2, ne);
   } else {
-    // 其他场景: 显示 Dell Hub 场景卡片(替代时钟/天气), 只显示2行数据
+    // 其他场景: 显示 Dell Hub 场景卡片(替代时钟/天气), 配色与第一页HUD一致
     c.setFont(&fonts::efontCN_14);
-    c.setTextColor(0xD3AB, bgp);  // Claude橙
+    c.setTextColor(scr, bgp);  // 亮白(同第一页时钟大字)
     if (Hub::cur().has && Hub::cur().line1[0]) {
       c.setCursor(X + 4, Y + 4); c.print(Hub::cur().line1);
-      c.setTextColor(scr, bgp);  // 亮色第2行
+      c.setTextColor(ln, bgp);  // 亮青(同第一页日期)
       if (Hub::cur().line2[0]) { c.setCursor(X + 4, Y + 24); c.print(Hub::cur().line2); }
     } else {
       c.setCursor(X + 4, Y + 4); c.print("卡片数据获取中…");
