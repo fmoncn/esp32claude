@@ -150,7 +150,7 @@ inline void draw(M5Canvas& c, uint32_t ms, int idx, int roamX) {
   c.drawEllipse(roamX, GROUND, 24, 4, c.color565(53, 160, 200));                            // 落地光圈
 }
 
-/* ---------- 统一 HUD:时钟/日期/天气/亲密度(全真实) ---------- */
+/* ---------- 统一 HUD:时钟/日期/天气/亲密度(全真实,14px紧凑2行) ---------- */
 inline void drawPanels(M5Canvas& c, int idx, int intimacy) {
   const int X = 4, Y = 4, W = 124, H = 42;
   uint16_t bgp = c.color565(8, 18, 34), ln = c.color565(53, 214, 255), scr = c.color565(223, 244, 255),
@@ -162,21 +162,19 @@ inline void drawPanels(M5Canvas& c, int idx, int intimacy) {
   if (ht) { snprintf(hhmm, sizeof(hhmm), "%02d:%02d", tmv.tm_hour, tmv.tm_min);
     snprintf(date, sizeof(date), "%d/%d 周%s", tmv.tm_mon + 1, tmv.tm_mday, WD[(tmv.tm_wday >= 0 && tmv.tm_wday < 7) ? tmv.tm_wday : 0]); }
   else { strcpy(hhmm, "--:--"); strcpy(date, "--"); }
-  c.setFont(&fonts::efontCN_12);
-  // 行1:时钟 + 天气图标 + 温度
-  c.setTextColor(scr, bgp); c.setCursor(X + 4, Y + 2); c.print(hhmm);
-  wxIcon(c, X + 66, Y + 1, WX::cur().cat, (float)millis() / 1000);
-  c.setTextColor(scr, bgp); c.setCursor(X + 86, Y + 2);
+  c.setFont(&fonts::efontCN_14);
+  // 行1:时钟(大字) + 天气图标 + 温度
+  c.setTextColor(scr, bgp); c.setCursor(X + 4, Y + 1); c.print(hhmm);
+  wxIcon(c, X + 66, Y + 0, WX::cur().cat, (float)millis() / 1000);
+  c.setTextColor(scr, bgp); c.setCursor(X + 86, Y + 1);
   if (WX::cur().t > -100) c.printf("%d°", WX::cur().t); else c.print("--");
-  // 行2:日期
-  c.setTextColor(dim, bgp); c.setCursor(X + 4, Y + 14); c.print(date);
-  // 行3:城市 + 天气描述(城市来自 IP 定位,确认定位对不对)
-  c.setTextColor(ln, bgp); c.setCursor(X + 4, Y + 26);
-  if (WX::cityBuf()[0]) { c.print(WX::cityBuf()); c.print(" "); }
-  c.print(WX::cur().label);
-  // 亲密度细条
-  c.fillRect(X + 4, Y + 38, W - 8, 2, c.color565(40, 50, 64));
-  if (intimacy >= 0) c.fillRect(X + 4, Y + 38, (W - 8) * (intimacy > 100 ? 100 : intimacy) / 100, 2, ne);
+  // 行2:日期 + 天气描述(合并一行)
+  c.setTextColor(ln, bgp); c.setCursor(X + 4, Y + 15); c.print(date);
+  c.setTextColor(dim, bgp);
+  if (WX::cur().label[0]) { c.print(" "); c.print(WX::cur().label); }
+  // 亲密度细条(底部)
+  c.fillRect(X + 4, Y + 36, W - 8, 2, c.color565(40, 50, 64));
+  if (intimacy >= 0) c.fillRect(X + 4, Y + 36, (W - 8) * (intimacy > 100 ? 100 : intimacy) / 100, 2, ne);
 }
 
 }  // namespace Scenes
