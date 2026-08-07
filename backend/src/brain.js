@@ -14,7 +14,8 @@ export async function respondToPet(petId, userText) {
 
   const system = buildSystemPrompt(pet);
   const result = await chatAsPet(system, pet.shortTerm, trimmed);
-  const reply = result.reply.slice(0, LIMITS.replyMaxChars);
+  const reply = result.reply.slice(0, LIMITS.replyMaxChars)
+    .replace(/\s*\n\s*/g, ' ').trim();  // 紧凑成一段:换行/分段替换成空格
 
   // 只把"成功的真回复"写进记忆,避免空回复污染历史
   if (result.ok) {
