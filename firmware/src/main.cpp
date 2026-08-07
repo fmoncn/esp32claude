@@ -15,12 +15,9 @@
 #include "pinyin_ime.h"
 #include "scenes.h"
 #include "weather.h"
-#include "azure_tts.h"
 
 // TLS + WebSocket 握手很吃栈;加大 loop 任务栈
 SET_LOOP_TASK_STACK_SIZE(32 * 1024);
-
-static bool gVoiceOn = false;  // 语音开关(Fn+V 切换;默认关,文字优先避免TTS耗时)
 
 static M5Canvas canvas(&M5Cardputer.Display);
 static SpritePlayer player;
@@ -208,8 +205,8 @@ void setup() {
   player.begin((fs::FS&)LittleFS); player.setAction("idle");
   pinyinIME.init("/config/pinyin_dict.bin");  // 拼音输入法字典(精简单字,放 LittleFS)
   gMtx = xSemaphoreCreateMutex();
-  // 后台核跑思考+朗读,40KB 栈(TLS/HTTPS + Speaker alloca 都很吃栈),钉在 core 0
-  xTaskCreatePinnedToCore(brainTask, "brain", 40 * 1024, nullptr, 1, nullptr, 0);
+  // 后台核跑思考+朗读,24KB 栈(HTTPS/TLS 很吃栈),钉在 core 0(主循环在 core 1)
+  xTaskCreatePinnedToCore(brainTask, "brain", 24 * 1024, nullptr, 1, nullptr, 0);
   setReply("连接 WiFi 中…"); render();
 
   if (wifiConnect()) {
@@ -256,14 +253,6 @@ static void brainTask(void*) {
         xSemaphoreTake(gMtx, portMAX_DELAY);
         gResReply = r.reply; gResEmotion = r.emotion; gResName = r.name; gResSeq++;
         xSemaphoreGive(gMtx);
-      }
-
-      // 语音开 + 聊天模式(非翻译) → 播放回复(TTS 经 Dell /tts 流式)
-      if (gVoiceOn && !gTranslate && gResReply != "(在想…)") {
-        std::string say = gResReply;
-        if (say.rfind("(网络", 0) == 0 || say.rfind("(连不", 0) == 0 || say.rfind("(大脑", 0) == 0
-            || say.rfind("(没听", 0) == 0 || say.rfind("(没搞", 0) == 0) say = "";  // 错误提示不朗读
-        if (!say.empty()) TTS::speak(say);
       }
 
       kbdIgnoreUntil = millis() + 300;  // 回复后冷却,防误触
@@ -320,8 +309,6 @@ static void handleKeyboard() {
                       setReply(std::string("场景：") + Scenes::name(gSceneIdx)); return; }
       if (c == '\\') { gAutoScene = true; gSceneIdx = Scenes::autoIdx(curHour());
                        setReply("场景：跟随作息自动切"); return; }
-      if (c == 'v' || c == 'V') {  // 语音开关(默认关,文字优先)
-        gVoiceOn = !gVoiceOn; setReply(gVoiceOn ? "语音已开启" : "语音已关闭"); return; }
       if (c == 'q' || c == 'Q') {  // 退出回 launcher(二次确认,防手滑重启)
         static uint32_t armUntil = 0;
         if (millis() < armUntil) { setReply("退出中…回到 launcher"); render();
@@ -463,7 +450,6 @@ void loop() {
 
 
   player.update(now);
-  // 语音播放中: 暂停重绘, 避免高频 pushSprite 与 Speaker 的 I2S/DMA 冲突产生杂音
-  if (!TTS::gSpeaking) render();
+  render();
   delay(5);
 }
