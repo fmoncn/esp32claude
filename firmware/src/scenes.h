@@ -182,7 +182,11 @@ inline void drawPanels(M5Canvas& c, int idx, int intimacy) {
     c.setTextColor(scr, bgp);  // 亮白(同第一页时钟大字)
     if (Hub::cur().has && Hub::cur().line1[0]) {
       c.setCursor(X + 4, Y + 4); c.print(Hub::cur().line1);
-      c.setTextColor(ln, bgp);  // 亮青(同第一页日期)
+      // 第2行: 行情涨跌红涨绿跌, 其他用亮青
+      uint16_t l2c = ln;
+      if (Hub::cur().trend > 0) l2c = 0xF800;      // 涨→红
+      else if (Hub::cur().trend < 0) l2c = 0x07E0; // 跌→绿
+      c.setTextColor(l2c, bgp);
       if (Hub::cur().line2[0]) { c.setCursor(X + 4, Y + 24); c.print(Hub::cur().line2); }
     } else {
       c.setCursor(X + 4, Y + 4); c.print("卡片数据获取中…");

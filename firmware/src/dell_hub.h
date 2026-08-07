@@ -25,6 +25,7 @@ struct Card {
   const char* title = "—";
   char line1[40] = {0};   // 第1行
   char line2[40] = {0};   // 第2行
+  int trend = 0;          // 涨跌方向(行情): 1=红涨  -1=绿跌  0=平/其他
   bool has = false;
 };
 
@@ -33,23 +34,23 @@ static const char* DELL_HUB = "http://LAN_IP:4000";
 inline Card& cur() { static Card c; return c; }
 inline CardType& cardOfScene() { static CardType t = CARD_QUOTE; return t; }
 
-// 场景 → 卡片映射(10 场景分配 5 种卡片, 按场景特点)
+// 场景 → 卡片映射(10 场景, 4个指数各占一场景)
 inline CardType cardForScene(int idx) {
   switch (idx % 10) {
     case 0: return CARD_DELL;     // 工作室 → Dell系统
-    case 1: return CARD_QUOTE;    // 客厅   → 行情
+    case 1: return CARD_QUOTE;    // 客厅   → 标普500
     case 2: return CARD_QUOTA;    // 卧室   → Claude额度
-    case 3: return CARD_QUOTE;    // 高楼   → 行情
+    case 3: return CARD_QUOTE;    // 高楼   → 纳指100
     case 4: return CARD_VPS;      // 沙漠   → VPS系统
-    case 5: return CARD_DELL;     // 草原   → Dell系统
-    case 6: return CARD_VPSMEM;   // 海洋   → VPS内存
+    case 5: return CARD_QUOTE;    // 草原   → 上证指数
+    case 6: return CARD_QUOTE;    // 海洋   → 恒生指数
     case 7: return CARD_QUOTA;    // 雪山   → Claude额度
     case 8: return CARD_DELL;     // 森林   → Dell系统
-    default: return CARD_QUOTE;   // 太空   → 行情
+    default: return CARD_VPSMEM;  // 太空   → VPS内存
   }
 }
 
-// 拉取单个 API 的 JSON
+// 拉取单个 API 的 JSON(先读完整响应到字符串, 再解析, 避免流式解析不完整)
 static bool getJson(const char* path, JsonDocument& doc) {
   if (WiFi.status() != WL_CONNECTED) return false;
   std::string url = std::string(DELL_HUB) + path;
@@ -59,7 +60,11 @@ static bool getJson(const char* path, JsonDocument& doc) {
   int code = http.GET();
   bool ok = false;
   if (code == 200) {
-    if (!deserializeJson(doc, http.getStream())) ok = true;
+    std::string body = http.getString().c_str();  // 完整读入(转 std::string)
+    if (!body.empty()) {
+      if (!deserializeJson(doc, body)) ok = true;
+      else Serial.printf("[Hub] JSON parse error: %s\n", path);
+    }
   }
   http.end();
   return ok;
@@ -82,22 +87,25 @@ inline bool fetch(int sceneIdx) {
   Card& c = cur();
   c.has = false;
   c.line1[0] = c.line2[0] = 0;
+  c.trend = 0;
 
   switch (cardOfScene()) {
     case CARD_QUOTE: {
-      // 行情分2页(按场景奇偶): 页0=纳指/标普  页1=恒指/上证
+      // 行情: 每场景1个指数, 第1行=名称+价格, 第2行=涨跌(红涨绿跌)
+      // 行情场景→指数序号: 客厅(1)→标普0, 高楼(3)→纳指1, 草原(5)→上证2, 海洋(6)→恒生3
+      static const int qidx[10] = {0,0,0,1,0,2,3,0,0,0};  // 按场景序号映射指数
       JsonDocument d;
       if (!getJson("/api/indices", d)) { snprintf(c.line1, sizeof(c.line1), "行情获取中…"); return false; }
       JsonArray arr = d.as<JsonArray>();
       int n = arr.size(); if (n > 4) n = 4;
-      bool pg2 = (sceneIdx % 2) == 1;   // 奇数场景→第2页
-      if (n >= 4) {
-        int i1 = pg2 ? 3 : 1;  // line1: 页0=纳指[1], 页1=恒指[3]
-        int i2 = pg2 ? 2 : 0;  // line2: 页0=标普[0], 页1=上证[2]
-        const char* nm1 = arr[i1]["name"] | ""; float pr1 = arr[i1]["price"] | 0; float g1 = arr[i1]["pct"] | 0;
-        const char* nm2 = arr[i2]["name"] | ""; float pr2 = arr[i2]["price"] | 0; float g2 = arr[i2]["pct"] | 0;
-        snprintf(c.line1, sizeof(c.line1), "%s%.0f %+.1f%%", nm1, pr1, g1);
-        snprintf(c.line2, sizeof(c.line2), "%s%.0f %+.1f%%", nm2, pr2, g2);
+      int i = (sceneIdx >= 0 && sceneIdx < 10) ? qidx[sceneIdx] : 0;
+      if (n > i) {
+        const char* nm = arr[i]["name"] | "";
+        // 用 as<> 显式读浮点/整数(避免 `| 0` 截断浮点)
+        double pr = arr[i]["price"].as<double>(); double g = arr[i]["pct"].as<double>();
+        snprintf(c.line1, sizeof(c.line1), "%s%.0f", nm, pr);   // 名称+价格(无逗号)
+        snprintf(c.line2, sizeof(c.line2), "%+.2f%%", g);       // 涨跌
+        c.trend = (g > 0.005) ? 1 : (g < -0.005) ? -1 : 0;      // 红涨绿跌平
         c.has = true;
       }
       break;
@@ -106,8 +114,8 @@ inline bool fetch(int sceneIdx) {
       // Dell: line1=DELL内存 43%  line2=系统盘 50%
       JsonDocument d;
       if (!getJson("/api/sysinfo", d)) { snprintf(c.line1, sizeof(c.line1), "系统信息获取中…"); return false; }
-      int mem = d["mem"]["pct"] | -1;
-      int dsys = d["disk_sys"]["pct"] | -1;
+      int mem = d["mem"]["pct"].as<int>(); if (mem < 0) mem = 0;
+      int dsys = d["disk_sys"]["pct"].as<int>(); if (dsys < 0) dsys = 0;
       snprintf(c.line1, sizeof(c.line1), "DELL内存 %d%%", mem);
       snprintf(c.line2, sizeof(c.line2), "系统盘 %d%%", dsys);
       c.has = true;
@@ -117,8 +125,8 @@ inline bool fetch(int sceneIdx) {
       // VPS: line1=VPS内存 50%  line2=磁盘 47%
       JsonDocument d;
       if (!getJson("/api/sysinfo/vps", d)) { snprintf(c.line1, sizeof(c.line1), "VPS 获取中…"); return false; }
-      int mem = d["mem"]["pct"] | -1;
-      int disk = d["disk_sys"]["pct"] | -1;
+      int mem = d["mem"]["pct"].as<int>(); if (mem < 0) mem = 0;
+      int disk = d["disk_sys"]["pct"].as<int>(); if (disk < 0) disk = 0;
       snprintf(c.line1, sizeof(c.line1), "VPS内存 %d%%", mem);
       snprintf(c.line2, sizeof(c.line2), "磁盘 %d%%", disk);
       c.has = true;
@@ -128,8 +136,8 @@ inline bool fetch(int sceneIdx) {
       // VPS内存(海洋): line1=VPS内存 50%  line2=磁盘 47%
       JsonDocument d;
       if (!getJson("/api/sysinfo/vps", d)) { snprintf(c.line1, sizeof(c.line1), "内存获取中…"); return false; }
-      int mem = d["mem"]["pct"] | -1;
-      int disk = d["disk_sys"]["pct"] | -1;
+      int mem = d["mem"]["pct"].as<int>(); if (mem < 0) mem = 0;
+      int disk = d["disk_sys"]["pct"].as<int>(); if (disk < 0) disk = 0;
       snprintf(c.line1, sizeof(c.line1), "VPS内存 %d%%", mem);
       snprintf(c.line2, sizeof(c.line2), "磁盘 %d%%", disk);
       c.has = true;
@@ -139,10 +147,10 @@ inline bool fetch(int sceneIdx) {
       // Claude额度: line1=Claude 89%(4h46m)  line2=99%(6d21h)
       JsonDocument d;
       if (!getJson("/api/sysinfo/vps", d)) { snprintf(c.line1, sizeof(c.line1), "额度获取中…"); return false; }
-      int p5 = d["claude"]["5h"]["pct"] | -1;
-      int p7 = d["claude"]["7d"]["pct"] | -1;
-      long r5 = d["claude"]["5h"]["reset_in_s"] | 0;
-      long r7 = d["claude"]["7d"]["reset_in_s"] | 0;
+      int p5 = d["claude"]["5h"]["pct"].as<int>(); if (p5 < 0) p5 = 0;
+      int p7 = d["claude"]["7d"]["pct"].as<int>(); if (p7 < 0) p7 = 0;
+      long r5 = d["claude"]["5h"]["reset_in_s"].as<long>();
+      long r7 = d["claude"]["7d"]["reset_in_s"].as<long>();
       char r5s[12], r7s[12];
       fmtReset(r5, r5s, sizeof(r5s));
       fmtReset(r7, r7s, sizeof(r7s));
