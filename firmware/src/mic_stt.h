@@ -140,19 +140,38 @@ inline std::string uploadToStt(uint32_t pcmBytes) {
   }
   f.close();
 
-  // 读响应
+  // 读响应: 先解析响应头拿 Content-Length, 再读完整 body(等够字节)
   uint32_t t0 = millis();
-  while (client.available() < 2 && millis() - t0 < 10000) { delay(1); }
-  // 跳过响应头
   String head;
-  while (client.available()) {
-    char c = client.read();
-    head += c;
-    if (head.endsWith("\r\n\r\n")) break;
+  int contentLen = -1;
+  while (client.connected() && millis() - t0 < 15000) {
+    if (client.available()) {
+      char c = client.read();
+      head += c;
+      // 解析 Content-Length
+      int cli = head.indexOf("Content-Length:");
+      if (contentLen < 0 && cli >= 0) {
+        contentLen = head.substring(cli + 16).toInt();
+        // 若头里含 \r\n 边界截断
+        int nl = head.indexOf('\r', cli + 16);
+        if (nl > 0) contentLen = head.substring(cli + 16, nl).toInt();
+      }
+      if (head.endsWith("\r\n\r\n")) break;  // 头结束
+    } else delay(1);
   }
-  // 读 body (JSON)
+  // 读 body: 若已知 Content-Length 就等够, 否则读到连接关闭
   String body;
-  while (client.available()) { body += (char)client.read(); }
+  if (contentLen > 0) {
+    while ((int)body.length() < contentLen && client.connected() && millis() - t0 < 20000) {
+      if (client.available()) body += (char)client.read();
+      else delay(1);
+    }
+  } else {
+    while (client.connected() && millis() - t0 < 20000) {
+      if (client.available()) body += (char)client.read();
+      else delay(2);
+    }
+  }
   client.stop();
 
   // 解析 JSON
