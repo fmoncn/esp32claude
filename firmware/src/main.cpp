@@ -301,8 +301,10 @@ static void handleKeyboard() {
     }
     if (c == '/' || c == '?') { if (pinyinIME.hasCandidates()) pinyinIME.nextPage(); continue; }
     // 亮度快捷键: - 降低10%, = 增加10%
-    if (c == '-') { if (gBrightness > 10) { gBrightness -= 26; M5Cardputer.Display.setBrightness(gBrightness); } continue; }
-    if (c == '=') { if (gBrightness < 245) { gBrightness += 26; M5Cardputer.Display.setBrightness(gBrightness); } continue; }
+    if (c == '-') { int b = gBrightness; b = (b > 26) ? b - 26 : 0;  // 到最低 0 停止,不循环
+                    gBrightness = b; M5Cardputer.Display.setBrightness(b); continue; }
+    if (c == '=') { int b = gBrightness; b = (b < 229) ? b + 26 : 255;  // 到最高 255 停止,不循环
+                    gBrightness = b; M5Cardputer.Display.setBrightness(b); continue; }
     if (pinyinIME.isComposing()) { input += pinyinIME.getComposing(); pinyinIME.clear(); }  // 标点→上屏拼音
     input += c;
   }
