@@ -32,40 +32,56 @@ inline void switchToSpeaker() {
 typedef void (*StatusCb)(const char*);
 static const char* g_lastErr = "";
 
-// 录音到 LittleFS 文件 /rec.pcm;返回字节数(0=失败/没说话)。
-// 不调用 LittleFS.end() —— 精灵需要保持文件系统挂载!
-inline uint32_t recordToFile(StatusCb tick, uint32_t maxMs = 55000) {
-  if (!LittleFS.begin()) { g_lastErr = "fsfail"; return 0; }
-  File f = LittleFS.open("/rec.pcm", "wb");
-  if (!f) { g_lastErr = "openfail"; return 0; }
+// ===== 点击切换录音 (参考 claude-pocket tap-to-toggle + 主循环驱动) =====
+// 按一次 Opt: 开始录音(开麦克风); 再按一次 Opt: 停止并处理(上传STT)。
+// 录音由主循环每帧调 updateRec() 拉数据, 非阻塞, 不占 core。
+enum RecState { REC_IDLE = 0, REC_RECORDING = 1 };
+static RecState gRecState = REC_IDLE;
+static bool gRecOpen = false;       // 麦克风是否已开
+static uint32_t gRecStartMs = 0;    // 录音起始时间(最大时长保护)
+static int16_t gRecBuf[2][1600];    // 双缓冲, 各100ms @16k
+static int gRecIdx = 0;
+static uint32_t gRecBytes = 0;      // 已录字节数
+static bool gRecSpoke = false;
 
+inline void recOpen() {
   switchToMic();
-  static int16_t buf[2][1600];  // 各 100ms @16k = 3200 字节
-  M5.Mic.record(buf[0], 1600, SR);
-  M5.Mic.record(buf[1], 1600, SR);
-  int idx = 0;
-  uint32_t start = millis();
-  bool spoke = false;
-  while (millis() - start < maxMs) {
-    M5Cardputer.update();
-    if (!M5Cardputer.Keyboard.keysState().opt && millis() - start > 400) break;  // 松开
-    while (M5.Mic.isRecording() == 2) { delay(1); }
+  // 清空旧的录音文件(用 wb 打开一次覆盖)
+  File clr = LittleFS.open("/rec.pcm", "wb"); if (clr) clr.close();
+  M5.Mic.record(gRecBuf[0], 1600, SR);
+  M5.Mic.record(gRecBuf[1], 1600, SR);
+  gRecIdx = 0; gRecBytes = 0; gRecSpoke = false;
+  gRecOpen = true; gRecStartMs = millis();
+  gRecState = REC_RECORDING;
+}
+// 主循环每帧调用: 拉一块录音数据写入 /rec.pcm; 返回已录字节数
+inline uint32_t recUpdate() {
+  if (gRecState != REC_RECORDING || !gRecOpen) return 0;
+  if (millis() - gRecStartMs > 55000) { return 0xFFFFFFFF; }  // 超时信号
+  while (M5.Mic.isRecording() == 2) { delay(1); }
+  File f = LittleFS.open("/rec.pcm", "ab");  // 追加写
+  if (f) {
     int32_t sum = 0;
-    for (int i = 0; i < 1600; i++) sum += abs(buf[idx][i]) / 1600;
-    if (sum > 200) spoke = true;
-    f.write((uint8_t*)buf[idx], 1600 * 2);
-    M5.Mic.record(buf[idx], 1600, SR);
-    idx ^= 1;
-    if (tick) tick("正在听");
+    for (int i = 0; i < 1600; i++) sum += abs(gRecBuf[gRecIdx][i]) / 1600;
+    if (sum > 200) gRecSpoke = true;
+    f.write((uint8_t*)gRecBuf[gRecIdx], 1600 * 2);
+    gRecBytes += 1600 * 2;
+    f.close();
   }
+  M5.Mic.record(gRecBuf[gRecIdx], 1600, SR);
+  gRecIdx ^= 1;
+  return gRecBytes;
+}
+// 停止录音, 切回扬声器; 返回录音字节数
+inline uint32_t recClose() {
+  if (!gRecOpen) return 0;
   switchToSpeaker();
-  uint32_t bytes = f.size();
-  f.close();
-  // 不调用 LittleFS.end()! 精灵还要用
-
-  if (!spoke || bytes < 3200) { g_lastErr = "没听清"; return 0; }
+  gRecState = REC_IDLE; gRecOpen = false;
+  uint32_t bytes = gRecBytes;
+  gRecBytes = 0;
   return bytes;
 }
+inline bool recActive() { return gRecState == REC_RECORDING; }
 
 // 上传 LittleFS 里的 /rec.pcm 到后端 /stt, 返回识别文本
 inline std::string uploadToStt(uint32_t pcmBytes) {
@@ -122,22 +138,6 @@ inline std::string uploadToStt(uint32_t pcmBytes) {
   if (deserializeJson(doc, body)) return "";
   const char* t = doc["text"] | "";
   return std::string(t).empty() ? "" : t;
-}
-
-// 返回识别文本(空=失败/没说话)
-inline std::string streamListen(StatusCb tick = nullptr) {
-  auto T = [&](const char* s) { if (tick) tick(s); };
-  g_lastErr = "";
-  if (WiFi.status() != WL_CONNECTED) { g_lastErr = "无网络"; return ""; }
-
-  T("录音…");
-  uint32_t bytes = recordToFile(tick);
-  if (bytes == 0) { if (g_lastErr[0]==0) g_lastErr = "没听清"; return ""; }
-
-  T("识别中…");
-  std::string text = uploadToStt(bytes);
-  if (text.empty() && g_lastErr[0] == 0) g_lastErr = "识别失败";
-  return text;
 }
 
 }  // namespace STT

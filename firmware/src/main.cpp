@@ -244,25 +244,32 @@ static void brainTask(void*) {
   }
 }
 
-// 录音期间的每帧回调:刷新动画 + 底部录音角标(画面不再全屏黑)
-static void pttTick(const char* status) {
-  gPttStatus = status;
-  player.update(millis());
-  render();
-}
-
-// 按住 Opt 说话:边录边把 PCM 流式发给 DashScope 实时识别(WSS),最长 ~55s
-static void doPTT() {
-  gRecording = true; gRecStart = millis(); gPttStatus = "连接中…";
-  player.setAction("thinking");            // 倾听姿态(录音全程在动)
-  render();
-  std::string heard = STT::streamListen(pttTick);
-  gRecording = false;
-
-  if (!heard.empty()) submitJob(heard);
-  else { setReply(std::string("(没听清:") + STT::g_lastErr + ")"); lastTtsFail = false; }
-  input.clear();
-  kbdIgnoreUntil = millis() + 400;
+// 点击切换录音 (参考 claude-pocket tap-to-toggle):
+// 按一次 Opt → 开始录音; 再按一次 Opt → 停止并发送
+static void togglePTT() {
+  if (!STT::recActive()) {
+    // IDLE → 开始录音
+    gRecording = true; gRecStart = millis(); gPttStatus = "录音中(再按Opt发送)…";
+    player.setAction("thinking");            // 倾听姿态
+    render();
+    STT::recOpen();
+  } else {
+    // RECORDING → 停止并处理
+    uint32_t bytes = STT::recClose();
+    gRecording = false;
+    player.setAction("idle");
+    render();
+    if (bytes > 3200 && STT::gRecSpoke) {
+      gPttStatus = "识别中…";
+      std::string heard = STT::uploadToStt(bytes);
+      if (!heard.empty()) submitJob(heard);
+      else { setReply(std::string("(没听清)") ); lastTtsFail = false; }
+    } else {
+      setReply("(没听清,再试一次)");
+    }
+    input.clear();
+    kbdIgnoreUntil = millis() + 400;
+  }
 }
 
 // 退出回 launcher = bmorcelli 自己删 app 时的官方动作:整块抹掉 otadata。
@@ -282,7 +289,7 @@ static void handleKeyboard() {
   if (gPhase != PH_IDLE) return;  // 思考/说话中不收键(也防喇叭噪声触发假按键)
   if (!(M5Cardputer.Keyboard.isChange() && M5Cardputer.Keyboard.isPressed())) return;
   auto st = M5Cardputer.Keyboard.keysState();
-  if (st.opt) { doPTT(); return; }  // 按住 Opt 说话
+  if (st.opt) { togglePTT(); return; }  // 点击切换:按一次开始/再按一次停止
   if (st.fn) {
     for (char c : st.word) {
       if (c == ',') { if (scrollTop > 0) scrollTop--; return; }
@@ -363,6 +370,18 @@ void loop() {
   } else {
     transientAction.clear();
     if (input.empty()) roamStep(now, curHour()); else player.setAction("idle");
+  }
+
+  // 录音中: 主循环每帧拉录音数据写入文件(非阻塞)
+  if (STT::recActive()) {
+    uint32_t r = STT::recUpdate();
+    if (r == 0xFFFFFFFF) {  // 超时自动停止
+      uint32_t rb = STT::recClose();
+      gRecording = false;
+      player.setAction("idle");
+      render();
+      if (rb > 3200) { std::string h = STT::uploadToStt(rb); if (!h.empty()) submitJob(h); }
+    }
   }
 
   player.update(now);
