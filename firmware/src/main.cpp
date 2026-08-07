@@ -98,29 +98,25 @@ static void render() {
 
   canvas.setFont(&fonts::efontCN_14);
   // 右上角 WiFi 信号(4 格随强度);未连显示红叉
-  { const int wx = 222, wy = 10; bool up = WiFi.status() == WL_CONNECTED; long rs = up ? WiFi.RSSI() : 0;
+  { const int wx = 205, wy = 10; bool up = WiFi.status() == WL_CONNECTED; long rs = up ? WiFi.RSSI() : 0;
     int bars = !up ? 0 : (rs >= -55 ? 4 : rs >= -65 ? 3 : rs >= -73 ? 2 : 1);
     uint16_t ac = !up ? 0x7BEF : (bars >= 3 ? 0x07E0 : bars == 2 ? 0xFFE0 : 0xFD20);
     for (int i = 0; i < 4; i++) { int bh = 2 + i * 2;
       canvas.fillRect(wx + i * 3, wy - bh, 2, bh, (up && i < bars) ? ac : 0x39C7); }
     if (!up) { canvas.drawLine(wx, 2, wx + 10, 10, 0xF800); canvas.drawLine(wx + 10, 2, wx, 10, 0xF800); } }
 
-  // 右上角电池电量图标(百分比填充;充电时绿色闪烁)
-  { const int bx = 206, by = 2, bw = 15, bh = 9;  // 电池位置(WiFi 图标左侧)
+  // 右上角电池电量图标(百分比填充,右对齐,稳定显示不闪)
+  { const int bx = 220, by = 2, bw = 15, bh = 9;  // 电池右对齐(最右侧,凸点到 237)
     int level = M5.Power.getBatteryLevel();
     if (level < 0) level = 0; if (level > 100) level = 100;
-    bool chg = M5.Power.isCharging();
     uint16_t col = level <= 20 ? 0xF800 : 0x07E0;  // 低电量红,正常绿
     // 电池外壳
     canvas.drawRect(bx, by, bw, bh, 0x7BEF);
     canvas.fillRect(bx + bw, by + 2, 2, bh - 4, 0x7BEF);  // 正极凸点
-    // 电量填充(4格)
+    // 电量填充(4格,稳定显示)
     int filled = (level + 24) / 25;  // 0-4 格
     for (int i = 0; i < 4; i++) {
-      if (i < filled) {
-        if (chg) canvas.fillRect(bx + 2 + i * 3, by + 2, 2, bh - 4, (millis() / 400) % 2 ? col : 0x39C7);  // 充电闪烁
-        else canvas.fillRect(bx + 2 + i * 3, by + 2, 2, bh - 4, col);
-      }
+      if (i < filled) canvas.fillRect(bx + 2 + i * 3, by + 2, 2, bh - 4, col);
       else canvas.fillRect(bx + 2 + i * 3, by + 2, 2, bh - 4, 0x39C7);  // 空格
     }
   }
@@ -311,18 +307,21 @@ static void handleKeyboard() {
     }
     return;
   }
-  // 退格(提前处理,避免退格键产生的字符污染 for 循环的 input)
+  // 退格(提前处理): UTF-8 安全删除(中文汉字3字节,不能只删1字节否则乱码)
   if (st.del) {
-    if (pinyinIME.isComposing()) pinyinIME.backspace();      // 拼音组合中→删拼音字母
+    if (pinyinIME.isComposing()) { pinyinIME.backspace(); }     // 拼音组合中→删拼音字母
     else if (!input.empty()) {
-      input.pop_back();                                       // 英文/普通→删最后一个字符
+      // 从末尾往前找出完整 UTF-8 字符起始
+      size_t n = input.size(), start = n - 1;
+      while (start > 0 && ((unsigned char)input[start] & 0xC0) == 0x80) start--;  // 跳过连续字节
+      input.erase(start);                                      // 删整个 UTF-8 字符
     }
     return;
   }
   // ---- 输入分流(中文拼音 / 英文) ----
   for (char c : st.word) {
     if (c == 0x2a || c == 0x08) continue;  // 过滤退格键 HID 值,避免乱码框
-    if (c == 0x00) {  // Esc 键 → 退出回 launcher
+    if (c == 0x00 || c == 0x35) {  // Esc 键 或 ·(反引号)键 → 退出回 launcher
       setReply("退出中…回到 launcher"); render();
       bootBackToLauncher();
       setReply("当前是整机直刷模式,没有 launcher 可回。"); return;
