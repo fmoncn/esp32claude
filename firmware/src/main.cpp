@@ -101,10 +101,10 @@ static void render() {
       canvas.fillRect(wx + i * 3, wy - bh, 2, bh, (up && i < bars) ? ac : 0x39C7); }
     if (!up) { canvas.drawLine(wx, 2, wx + 10, 10, 0xF800); canvas.drawLine(wx + 10, 2, wx, 10, 0xF800); } }
 
+  // 对话框输入框(Alt 键可显示/隐藏;隐藏时连黑色背景一起消失)
+  if (gShowInput) {
   canvas.fillRect(0, BAR_TOP, 240, 135 - BAR_TOP, 0x0000);
   canvas.drawFastHLine(0, BAR_TOP - 1, 240, 0x18C3);
-  // 对话框输入框(Alt 键可显示/隐藏)
-  if (gShowInput) {
   // 拼音输入候选栏(组合中时显示在输入区上方)
   if (pinyinIME.isComposing() || pinyinIME.hasCandidates()) {
     canvas.setFont(&fonts::efontCN_12);
@@ -150,6 +150,9 @@ static void render() {
       canvas.fillTriangle(232, BAR_Y + 2 * LH - 2, 236, BAR_Y + 2 * LH - 2, 234, BAR_Y + 2 * LH + 2, 0x7BCF);
   }
   }  // end gShowInput
+  else {  // 隐藏对话框:用场景地面色填满下半屏,视觉连续
+    canvas.fillRect(0, BAR_TOP, 240, 135 - BAR_TOP, canvas.color565(10, 20, 34));
+  }
 
   // P1 体验改进: THINKING/SPEAKING 状态加可爱的动态视觉反馈(14岁女孩等待时不会觉得卡死)
   if (gPhase == PH_THINKING) {
