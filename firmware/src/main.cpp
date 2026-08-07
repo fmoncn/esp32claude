@@ -30,6 +30,7 @@ static uint32_t gIdleSince = 0;           // 最后操作时间(省电关机计�
 static bool gShutdownWarned = false;      // 已显示关机提示
 static bool gAutoScroll = false;          // 自动滚动中(长回复)
 static uint32_t gAutoScrollNext = 0;      // 下次推进时间
+static int gInputMode = 1;                // 1=中文拼音 0=英文(Shift 切换)
 static int gAutoScrollTarget = 0;         // 目标滚动位置(底部)
 static uint32_t kbdIgnoreUntil = 0;
 
@@ -129,10 +130,11 @@ static void render() {
       canvas.print(pg);
     }
   } else if (!input.empty()) {
-    // 输入显示 2 行(长输入自动换行);光标一闪一闪(终端风格)
+    // 输入显示 2 行(长输入自动换行);光标一闪一闪(终端风格);前缀显示中/EN 模式
     canvas.setTextColor(0xD3AB, 0x08A4);   // Claude橙
-    auto ilines = wrapLines("> " + input, BARW);
-    if (ilines.empty()) ilines.push_back("> ");
+    std::string prompt = gInputMode ? "中> " : "EN> ";
+    auto ilines = wrapLines(prompt + input, BARW);
+    if (ilines.empty()) ilines.push_back(prompt);
     for (int i = 0; i < 2 && i < (int)ilines.size(); i++) {
       canvas.setCursor(4, BAR_Y + i * LH);
       canvas.print(ilines[i].c_str());
@@ -267,6 +269,9 @@ static void handleKeyboard() {
   // Ctrl 键: 切换场景(按一下换一个)
   if (st.ctrl) { gAutoScene = false; gSceneIdx = (gSceneIdx + 1) % Scenes::count();
                  setReply(std::string("场景：") + Scenes::name(gSceneIdx)); return; }
+  // Aa 键(Shift): 切换中/英文输入
+  if (st.shift) { gInputMode = !gInputMode; pinyinIME.clear();
+                  setReply(gInputMode ? "中文输入" : "英文输入"); return; }
   if (st.fn) {
     for (char c : st.word) {
       if (c == ',') { gAutoScroll = false; if (scrollTop > 0) scrollTop--; return; }
@@ -289,10 +294,13 @@ static void handleKeyboard() {
     }
     return;
   }
-  // ---- 拼音输入分流 ----
+  // ---- 输入分流(中文拼音 / 英文) ----
   for (char c : st.word) {
-    if (c >= 'a' && c <= 'z') { pinyinIME.addChar(c); continue; }  // 字母→拼音
-    if (c >= 'A' && c <= 'Z') { pinyinIME.addChar(c); continue; }
+    if (c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z') {
+      if (gInputMode) { pinyinIME.addChar(c); }  // 中文→拼音
+      else { input += c; gAutoScroll = false; }  // 英文→直接上屏
+      continue;
+    }
     if (c >= '1' && c <= '9' && pinyinIME.hasCandidates()) {  // 数字→选候选
       const char* picked = pinyinIME.select(c - '0');
       if (picked && picked[0]) input += picked;
