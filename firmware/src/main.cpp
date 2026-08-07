@@ -21,9 +21,10 @@ SET_LOOP_TASK_STACK_SIZE(32 * 1024);
 static M5Canvas canvas(&M5Cardputer.Display);
 static SpritePlayer player;
 
-static std::string input, reply = "我在,主人。", petName = "小豆丁", emotion = "neutral";
+static std::string input, reply = "请输入文本...", petName = "小豆丁", emotion = "neutral";
 static std::vector<std::string> replyLines;
 static int scrollTop = 0;
+static uint8_t gBrightness = 50;          // 屏幕亮度 0-255(默认 50);-= 键调
 static bool gAutoScroll = false;          // 自动滚动中(长回复)
 static uint32_t gAutoScrollNext = 0;      // 下次推进时间
 static int gAutoScrollTarget = 0;         // 目标滚动位置(底部)
@@ -174,6 +175,7 @@ void setup() {
   auto cfg = M5.config();
   M5Cardputer.begin(cfg, true);
   M5Cardputer.Display.setRotation(1);
+  M5Cardputer.Display.setBrightness(gBrightness);  // 默认亮度 50/255
   canvas.setColorDepth(16); canvas.createSprite(240, 135);
   LittleFS.begin(false);  // 别 format-on-fail(launcher 模式下无 littlefs 分区,精灵已在 SD)
   // 修复: 精灵一律走内置 Flash(LittleFS), 不用 SD 卡。
@@ -190,7 +192,7 @@ void setup() {
   if (wifiConnect()) {
     configTzTime("CST-8", "ntp.aliyun.com", "ntp.ntsc.ac.cn", "pool.ntp.org");
     delay(300); gSceneIdx = Scenes::autoIdx(curHour());  // 按作息选初始场景
-    setReply(std::string("我在,主人。") + "打字发消息;Fn+[ ] 切场景。");
+    setReply("请输入文本...");
     setTransient("waving", 2500);
   } else {
     setReply("连不上 WiFi…去 config.h 检查。");
@@ -298,6 +300,9 @@ static void handleKeyboard() {
       continue;
     }
     if (c == '/' || c == '?') { if (pinyinIME.hasCandidates()) pinyinIME.nextPage(); continue; }
+    // 亮度快捷键: - 降低10%, = 增加10%
+    if (c == '-') { if (gBrightness > 10) { gBrightness -= 26; M5Cardputer.Display.setBrightness(gBrightness); } continue; }
+    if (c == '=') { if (gBrightness < 245) { gBrightness += 26; M5Cardputer.Display.setBrightness(gBrightness); } continue; }
     if (pinyinIME.isComposing()) { input += pinyinIME.getComposing(); pinyinIME.clear(); }  // 标点→上屏拼音
     input += c;
   }
