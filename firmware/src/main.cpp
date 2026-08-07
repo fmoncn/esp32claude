@@ -26,6 +26,7 @@ static std::vector<std::string> replyLines;
 static int scrollTop = 0;
 static bool gAutoScroll = false;          // 自动滚动中(长回复)
 static uint32_t gAutoScrollNext = 0;      // 下次推进时间
+static bool gShowInput = true;            // 输入框/对话框显示(Alt 切换)
 static int gAutoScrollTarget = 0;         // 目标滚动位置(底部)
 static uint32_t kbdIgnoreUntil = 0;
 
@@ -102,6 +103,8 @@ static void render() {
 
   canvas.fillRect(0, BAR_TOP, 240, 135 - BAR_TOP, 0x0000);
   canvas.drawFastHLine(0, BAR_TOP - 1, 240, 0x18C3);
+  // 对话框输入框(Alt 键可显示/隐藏)
+  if (gShowInput) {
   // 拼音输入候选栏(组合中时显示在输入区上方)
   if (pinyinIME.isComposing() || pinyinIME.hasCandidates()) {
     canvas.setFont(&fonts::efontCN_12);
@@ -146,6 +149,7 @@ static void render() {
     if (scrollTop + VIS < (int)replyLines.size())
       canvas.fillTriangle(232, BAR_Y + 2 * LH - 2, 236, BAR_Y + 2 * LH - 2, 234, BAR_Y + 2 * LH + 2, 0x7BCF);
   }
+  }  // end gShowInput
 
   // P1 体验改进: THINKING/SPEAKING 状态加可爱的动态视觉反馈(14岁女孩等待时不会觉得卡死)
   if (gPhase == PH_THINKING) {
@@ -254,6 +258,11 @@ static void handleKeyboard() {
   if (gPhase != PH_IDLE) return;  // 思考/说话中不收键(也防喇叭噪声触发假按键)
   if (!(M5Cardputer.Keyboard.isChange() && M5Cardputer.Keyboard.isPressed())) return;
   auto st = M5Cardputer.Keyboard.keysState();
+  // Ctrl 键: 切换场景(按一下换一个)
+  if (st.ctrl) { gAutoScene = false; gSceneIdx = (gSceneIdx + 1) % Scenes::count();
+                 setReply(std::string("场景：") + Scenes::name(gSceneIdx)); return; }
+  // Alt 键: 显示/隐藏对话框输入框(按一下隐藏,再按一下呼出)
+  if (st.alt) { gShowInput = !gShowInput; return; }
   if (st.fn) {
     for (char c : st.word) {
       if (c == ',') { gAutoScroll = false; if (scrollTop > 0) scrollTop--; return; }
