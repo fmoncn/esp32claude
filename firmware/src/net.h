@@ -142,3 +142,29 @@ inline PetReply askPet(const std::string& message) {
   http.end(); // 每次都收尾,释放 socket/堆
   return out;
 }
+
+// 中英互译:调后端 /translate,返回翻译结果(成功时 ok=true,translation 为译文)
+inline bool translateText(const std::string& text, std::string& translation) {
+  translation.clear();
+  if (!ensureWiFi()) return false;
+  std::string url = backendBase() + "/translate";
+  WiFiClient client; HTTPClient http;
+  if (!http.begin(client, url.c_str())) return false;
+  http.addHeader("Content-Type", "application/json");
+  if (std::strlen(PET_TOKEN) > 0) http.addHeader("x-pet-token", PET_TOKEN);
+  http.setTimeout(30000);
+  JsonDocument req;
+  req["message"] = text;
+  std::string body;
+  serializeJson(req, body);
+  int code = http.POST((uint8_t*)body.data(), body.size());
+  if (code == 200) {
+    JsonDocument res;
+    if (!deserializeJson(res, http.getStream())) {
+      const char* t = res["translation"] | "";
+      if (*t) { translation = t; http.end(); return true; }
+    }
+  }
+  http.end();
+  return false;
+}

@@ -3,6 +3,7 @@ import { config } from './config.js';
 import { loadPet } from './store.js';
 import { describeState } from './pet.js';
 import { respondToPet } from './brain.js';
+import { translateText } from './llm.js';
 
 const app = express();
 app.use(express.json({ limit: '16kb' }));
@@ -58,6 +59,22 @@ app.post('/chat', async (req, res) => {
   } catch (err) {
     console.error('[/chat] error:', err.message);
     res.status(502).json({ error: '宠物大脑暂时不在线', detail: err.message });
+  }
+});
+
+// 中英互译(Alt 翻译模式)
+app.post('/translate', async (req, res) => {
+  try {
+    const { message } = req.body || {};
+    if (typeof message !== 'string' || !message.trim()) {
+      return res.status(400).json({ error: 'message 必填' });
+    }
+    const out = await translateText(message);
+    if (!out.ok) throw new Error(out.error || '翻译失败');
+    res.json({ translation: out.translation, from: out.from });
+  } catch (err) {
+    console.error('[/translate] error:', err.message);
+    res.status(502).json({ error: '翻译服务暂时不可用', detail: err.message });
   }
 });
 

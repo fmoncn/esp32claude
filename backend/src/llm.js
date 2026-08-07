@@ -104,3 +104,22 @@ export async function summarize(prevSummary, overflowTurns) {
   const raw = await callDeepSeek([{ role: 'user', content: prompt }]);
   return raw.trim().slice(0, 600);
 }
+
+// 中英互译:自动检测语言(含中文字符→译英,否则→译中)
+export async function translateText(text) {
+  const trimmed = String(text || '').trim();
+  if (!trimmed) return { ok: false, translation: '' };
+  const hasHan = /[\u4e00-\u9fff]/.test(trimmed);
+  const target = hasHan ? 'English' : 'Chinese (Simplified)';
+  const prompt =
+    `You are a translator. Translate the following text into ${target}. ` +
+    `Output ONLY the translation, no quotes, no explanation, no extra words.\n\n` +
+    `Text: ${trimmed}`;
+  try {
+    const raw = await callDeepSeek([{ role: 'user', content: prompt }]);
+    const translation = raw.trim().slice(0, 400);
+    return { ok: !!translation, translation, from: hasHan ? 'zh' : 'en' };
+  } catch (err) {
+    return { ok: false, translation: '', error: err.message };
+  }
+}

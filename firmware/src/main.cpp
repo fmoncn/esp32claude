@@ -31,6 +31,7 @@ static bool gShutdownWarned = false;      // 已显示关机提示
 static bool gAutoScroll = false;          // 自动滚动中(长回复)
 static uint32_t gAutoScrollNext = 0;      // 下次推进时间
 static int gInputMode = 1;                // 1=中文拼音 0=英文(Shift 切换)
+static bool gTranslate = false;           // true=翻译模式(Alt 切换) false=聊天模式
 static int gAutoScrollTarget = 0;         // 目标滚动位置(底部)
 static uint32_t kbdIgnoreUntil = 0;
 
@@ -148,7 +149,7 @@ static void render() {
   } else if (!input.empty()) {
     // 输入显示 2 行(长输入自动换行);光标一闪一闪(终端风格);前缀显示中/EN 模式
     canvas.setTextColor(0xD3AB, 0x08A4);   // Claude橙
-    std::string prompt = gInputMode ? "中> " : "EN> ";
+    std::string prompt = gTranslate ? "译> " : (gInputMode ? "中> " : "EN> ");
     auto ilines = wrapLines(prompt + input, BARW);
     if (ilines.empty()) ilines.push_back(prompt);
     for (int i = 0; i < 2 && i < (int)ilines.size(); i++) {
@@ -238,11 +239,21 @@ static void brainTask(void*) {
       xSemaphoreTake(gMtx, portMAX_DELAY); msg = gJobMsg; gJobReady = false; xSemaphoreGive(gMtx);
 
       gPhase = PH_THINKING;
-      PetReply r = askPet(msg);
-      if (r.intimacy >= 0) gIntimacy = r.intimacy;
-      xSemaphoreTake(gMtx, portMAX_DELAY);
-      gResReply = r.reply; gResEmotion = r.emotion; gResName = r.name; gResSeq++;
-      xSemaphoreGive(gMtx);
+      if (gTranslate) {  // 翻译模式:中英互译(不查记忆/不更新亲密度)
+        std::string translation;
+        bool ok = translateText(msg, translation);
+        xSemaphoreTake(gMtx, portMAX_DELAY);
+        gResReply = ok ? translation : "(翻译失败,请检查网络)";
+        gResEmotion = ok ? "neutral" : "sad";
+        gResName = ""; gResSeq++;
+        xSemaphoreGive(gMtx);
+      } else {  // 聊天模式
+        PetReply r = askPet(msg);
+        if (r.intimacy >= 0) gIntimacy = r.intimacy;
+        xSemaphoreTake(gMtx, portMAX_DELAY);
+        gResReply = r.reply; gResEmotion = r.emotion; gResName = r.name; gResSeq++;
+        xSemaphoreGive(gMtx);
+      }
 
       kbdIgnoreUntil = millis() + 300;  // 回复后冷却,防误触
       gPhase = PH_IDLE;
@@ -285,6 +296,9 @@ static void handleKeyboard() {
   // Aa 键(Shift): 切换中/英文输入
   if (st.shift) { gInputMode = !gInputMode; pinyinIME.clear();
                   setReply(gInputMode ? "中文输入" : "英文输入"); return; }
+  // Alt 键: 切换 聊天/翻译 模式(中英互译)
+  if (st.alt) { gTranslate = !gTranslate; pinyinIME.clear();
+                setReply(gTranslate ? "翻译模式：中英互译" : "聊天模式"); return; }
   if (st.fn) {
     for (char c : st.word) {
       if (c == ',') { gAutoScroll = false; if (scrollTop > 0) scrollTop--; return; }
