@@ -15,6 +15,7 @@
 #include "pinyin_ime.h"
 #include "scenes.h"
 #include "weather.h"
+#include "dell_hub.h"
 
 // TLS + WebSocket 握手很吃栈;加大 loop 任务栈
 SET_LOOP_TASK_STACK_SIZE(32 * 1024);
@@ -33,6 +34,8 @@ static uint32_t gAutoScrollNext = 0;      // 下次推进时间
 static int gInputMode = 1;                // 1=中文拼音 0=英文(Shift 切换)
 static bool gTranslate = false;           // true=翻译模式(Alt 切换) false=聊天模式
 static int gWifiRssi = -40;               // WiFi 信号缓存(启动+定期更新,避免render频繁读异常)
+static int gLastCardScene = -1;           // 上次拉取卡片的场景(变化时重新拉)
+static uint32_t gCardNext = 0;            // 卡片下次刷新时间(每60s)
 static int gAutoScrollTarget = 0;         // 目标滚动位置(底部)
 static uint32_t kbdIgnoreUntil = 0;
 
@@ -120,6 +123,23 @@ static void render() {
     for (int i = 0; i < 4; i++) {
       if (i < filled) canvas.fillRect(bx + 2 + i * 3, by + 2, 2, bh - 4, col);
       else canvas.fillRect(bx + 2 + i * 3, by + 2, 2, bh - 4, 0x39C7);  // 空格
+    }
+  }
+
+  // 场景卡片区(HUD 下方): 切换场景显示对应 Dell Hub 信息卡片
+  { const int cx = 4, cy = 50, cw = 232, ch = 34;
+    uint16_t cbg = canvas.color565(8, 18, 34), cln = canvas.color565(53, 214, 255);
+    canvas.fillRect(cx, cy, cw, ch, cbg);
+    canvas.drawRect(cx, cy, cw, ch, cln);
+    // 标题(左)+ 卡片类型
+    canvas.setTextColor(cln, cbg); canvas.setCursor(cx + 6, cy + 2);
+    canvas.print(Hub::cur().title);
+    canvas.setTextColor(0xD3AB, cbg);  // Claude橙数据
+    if (Hub::cur().has) {
+      canvas.setCursor(cx + 6, cy + 16); canvas.print(Hub::cur().line1);
+      canvas.setCursor(cx + 6, cy + 28); canvas.print(Hub::cur().line2);
+    } else {
+      canvas.setCursor(cx + 6, cy + 16); canvas.print(Hub::cur().line1);
     }
   }
 
@@ -271,6 +291,12 @@ static void brainTask(void*) {
       gWifiRssi = r;
       Serial.printf("[RSSI] %d dBm\n", gWifiRssi);
       rssiDiagNext = millis() + 15000;
+    }
+    // 场景卡片: 切换场景重新拉取 + 每 60s 刷新
+    if (WiFi.status() == WL_CONNECTED && (gSceneIdx != gLastCardScene || millis() > gCardNext)) {
+      Hub::fetch(gSceneIdx);
+      gLastCardScene = gSceneIdx;
+      gCardNext = millis() + 60000;
     }
     // 空闲时拉天气 + 亲密度(开机一次 + 每 30 分钟);先 IP 定位。TLS 在后台核,不卡主循环
     if (gPhase == PH_IDLE && WiFi.status() == WL_CONNECTED && millis() > gWxNext) {
