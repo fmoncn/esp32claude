@@ -100,6 +100,8 @@ static void render() {
   canvas.setFont(&fonts::efontCN_14);
   // 右上角 WiFi 信号(4 格随强度);未连显示红叉
   { const int wx = 205, wy = 10; bool up = WiFi.status() == WL_CONNECTED; long rs = up ? WiFi.RSSI() : 0;
+    // RSSI 可能偶尔返回 0(ESP32 运行中读取异常)→ 视为强信号(-20), 避免误显示 1 格
+    if (rs >= 0) rs = -20;
     int bars = !up ? 0 : (rs >= -55 ? 4 : rs >= -65 ? 3 : rs >= -73 ? 2 : 1);
     uint16_t ac = !up ? 0x7BEF : (bars >= 3 ? 0x07E0 : bars == 2 ? 0xFFE0 : 0xFD20);
     for (int i = 0; i < 4; i++) { int bh = 2 + i * 2;
@@ -210,6 +212,7 @@ void setup() {
   setReply("连接 WiFi 中…"); render();
 
   if (wifiConnect()) {
+    Serial.printf("[WIFI] connected, RSSI=%d dBm, channel=%d\n", WiFi.RSSI(), WiFi.channel());
     configTzTime("CST-8", "ntp.aliyun.com", "ntp.ntsc.ac.cn", "pool.ntp.org");
     delay(300); gSceneIdx = Scenes::autoIdx(curHour());  // 按作息选初始场景
     setReply("请输入文本...");
