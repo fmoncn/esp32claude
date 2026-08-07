@@ -20,6 +20,33 @@ inline std::string backendBase() {
   return p == std::string::npos ? u : u.substr(0, p);
 }
 
+// 解析 BACKEND_URL (http://ip:port/chat) 辅助函数
+inline std::string backendHost() {          // "ip:port"
+  std::string u = BACKEND_URL;
+  size_t s = u.find("//"); if (s == std::string::npos) return u;
+  s += 2; size_t e = u.find('/', s);
+  return u.substr(s, e - s);
+}
+inline IPAddress backendIP() {              // 解析 IP
+  std::string h = backendHost();
+  size_t c = h.find(':'); std::string ip = (c == std::string::npos) ? h : h.substr(0, c);
+  IPAddress a; a.fromString(ip.c_str()); return a;
+}
+inline uint16_t backendPort() {             // 默认 80
+  std::string h = backendHost();
+  size_t c = h.find(':');
+  if (c == std::string::npos) return 80;
+  return (uint16_t)atoi(h.substr(c+1).c_str());
+}
+inline std::string backendPath() {          // 基路径, 如 "/" 或 "/api"
+  std::string u = BACKEND_URL;
+  size_t s = u.find("//"); if (s == std::string::npos) return "";
+  s += 2; size_t e = u.find('/', s);
+  if (e == std::string::npos) return "";
+  size_t q = u.find('/', e+1);
+  return q == std::string::npos ? "/" : u.substr(e, q-e);
+}
+
 // 拉一次宠物状态里的亲密度(开机种子值);失败返回 -1
 inline int fetchIntimacy() {
   if (WiFi.status() != WL_CONNECTED) return -1;
@@ -41,6 +68,8 @@ inline int fetchIntimacy() {
 
 inline bool wifiConnect(uint32_t timeoutMs = 15000) {
   WiFi.mode(WIFI_STA);
+  WiFi.setAutoReconnect(true);  // 开启底层自动重连
+  WiFi.persistent(true);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   uint32_t t0 = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - t0 < timeoutMs) {
@@ -49,11 +78,24 @@ inline bool wifiConnect(uint32_t timeoutMs = 15000) {
   return WiFi.status() == WL_CONNECTED;
 }
 
+// 非阻塞 WiFi 守护: 掉线自动重连(带5秒冷却, 不阻塞主循环)
+inline bool ensureWiFi() {
+  if (WiFi.status() == WL_CONNECTED) return true;
+  static uint32_t lastTryMs = 0;
+  if (millis() - lastTryMs < 5000) return false;  // 5秒冷却防刷
+  lastTryMs = millis();
+  WiFi.disconnect();
+  WiFi.reconnect();
+  uint32_t start = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - start < 2000) delay(50);
+  return WiFi.status() == WL_CONNECTED;
+}
+
 // 把一句话发给大脑,返回 {reply, emotion, name}
 inline PetReply askPet(const std::string& message) {
   PetReply out;
-  if (WiFi.status() != WL_CONNECTED) {
-    out.reply = "(没连上 WiFi…)";
+  if (!ensureWiFi()) {  // 使用 ensureWiFi 自动重连
+    out.reply = "(网络似乎溜走了,正在重连…)";
     out.emotion = "sad";
     return out;
   }

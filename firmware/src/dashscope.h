@@ -1,115 +1,97 @@
 #pragma once
 #include <M5Cardputer.h>
 #include <WiFi.h>
-#include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include <cstring>
 #include <string>
 #include "config.h"
+#include "net.h"
 
-// 设备直连 DashScope(绕开 Mac VPN)。带失败原因返回。
+// 方案Y改造: TTS 走后端代理(微软 Azure TTS), 不再直连 DashScope。
+// 流程: 调后端 /tts → 返回 24kHz 裸 PCM → 流式边收边播。
+// ⚠️ 无PSRAM关键: 不能一次性 malloc 整个 PCM(回复约90KB, 堆不够), 
+//    必须用小的轮转缓冲边从HTTP读边播放。
 namespace DS {
 
 inline int& volRef() { static int v = 160; return v; }  // 0..255 音量
 
+// 流式播放: 调后端 /tts, 边读边播。返回错误字符串(空=成功)
 inline std::string speak(const std::string& text) {
-  if (strlen(DASHSCOPE_API_KEY) == 0) return "nokey";
   if (WiFi.status() != WL_CONNECTED) return "nowifi";
   if (text.empty()) return "empty";
-  const char* GEN = "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation";
 
-  IPAddress ip;
-  if (!WiFi.hostByName("dashscope.aliyuncs.com", ip)) return "dnsfail";
+  std::string url = backendBase() + "/tts";
+  WiFiClient client; HTTPClient http;
+  if (!http.begin(client, url.c_str())) return "beginfail";
+  http.addHeader("Content-Type", "application/json");
+  if (std::strlen(PET_TOKEN) > 0) http.addHeader("x-pet-token", PET_TOKEN);
+  http.setTimeout(30000);
 
-  String url; int code1 = 0;
-  {
-    WiFiClientSecure tls; tls.setInsecure(); tls.setHandshakeTimeout(10);
-    HTTPClient http;
-    if (!http.begin(tls, GEN)) return "beginfail";
-    http.addHeader("Authorization", String("Bearer ") + DASHSCOPE_API_KEY);
-    http.addHeader("Content-Type", "application/json");
-    http.setTimeout(15000);
-    JsonDocument req;
-    req["model"] = DASHSCOPE_TTS_MODEL;
-    req["input"]["text"] = text.c_str();
-    req["input"]["voice"] = DASHSCOPE_VOICE;
-    String body; serializeJson(req, body);
-    code1 = http.POST(body);
-    if (code1 == 200) {
-      JsonDocument filter; filter["output"]["audio"]["url"] = true;
-      JsonDocument doc;
-      if (!deserializeJson(doc, http.getStream(), DeserializationOption::Filter(filter)))
-        url = doc["output"]["audio"]["url"].as<String>();
-    }
-    http.end();
-  }
-  if (code1 != 200) return std::string("post") + String(code1).c_str();
-  if (url.isEmpty()) return "nourl";
+  JsonDocument req;
+  req["text"] = text.c_str();
+  std::string body;
+  serializeJson(req, body);
 
-  bool https = url.startsWith("https:");
-  WiFiClient plain;
-  WiFiClientSecure tls2; tls2.setInsecure(); tls2.setHandshakeTimeout(10);
-  HTTPClient http;
-  http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
-  http.setTimeout(10000);
-  if (!http.begin(https ? (WiFiClient&)tls2 : (WiFiClient&)plain, url)) return "wavbegin";
-  int code2 = http.GET();
-  if (code2 != 200) { http.end(); return std::string("wav") + String(code2).c_str(); }
+  int code = http.POST((uint8_t*)body.data(), body.size());
+  if (code != 200) { http.end(); return "tts" + std::to_string(code); }
 
   WiFiClient* s = http.getStreamPtr();
-  s->setTimeout(3000);
+  s->setTimeout(5000);
   int total = http.getSize();
+  if (total <= 0) { http.end(); return "nosize"; }
 
-  uint8_t h[64]; int hn = 0; uint32_t t0 = millis();
-  while (hn < 64 && millis() - t0 < 3000) {
-    int a = s->available();
-    if (a > 0) { int want = 64 - hn; if (a < want) want = a; int r = s->readBytes(h + hn, want); if (r > 0) hn += r; }
-    else if (!s->connected()) break;
-    else delay(2);
-  }
-  uint32_t sr = (hn >= 28) ? (h[24] | (h[25] << 8) | (h[26] << 16) | ((uint32_t)h[27] << 24)) : 24000;
-  if (sr < 8000 || sr > 48000) sr = 24000;
-  int dataStart = 44;
-  for (int k = 12; k + 8 <= hn; k++)
-    if (h[k] == 'd' && h[k+1] == 'a' && h[k+2] == 't' && h[k+3] == 'a') { dataStart = k + 8; break; }
-
-  // 播放:4 个轮转缓冲(playRaw 不拷数据)+ 按整采样对齐(进位奇数字节,防错位杂音)
+  // 流式播放: 4 个轮转缓冲(每个1KB), 边读边播, 不用大块malloc
   M5.Speaker.setVolume(volRef());
-  static int16_t pbuf[4][512];
-  static uint8_t lead[64];
-  int slot = 0, carry = 0; uint8_t carryByte = 0;
-
-  int pre = hn - dataStart; if (pre < 0) pre = 0;
-  if (pre > 0) {
-    memcpy(lead, h + dataStart, pre);
-    if (pre & 1) { carry = 1; carryByte = lead[pre - 1]; }
-    if (pre / 2 > 0) M5.Speaker.playRaw((int16_t*)lead, pre / 2, sr, false, 1, 0, false);
-  }
-
-  size_t consumed = hn;
+  const int SR = 24000;
+  static int16_t pbuf[4][512];   // 每块 512 samples = 1024 bytes
+  static uint8_t carryBuf = 0;
+  int slot = 0, carry = 0;
+  size_t consumed = 0;
   uint32_t lastData = millis();
+
   while (true) {
-    if (total > 0 && (int)consumed >= total) break;
-    int a = s->available();
-    if (a <= 0) { if (!s->connected()) break; if (millis() - lastData > 3000) break; delay(2); continue; }
+    // 读到下一块
     uint8_t* bb = (uint8_t*)pbuf[slot];
     int off = 0;
-    if (carry) { bb[0] = carryByte; off = 1; carry = 0; }
-    int want = 1024 - off; if (a < want) want = a;
-    int n = s->readBytes(bb + off, want);
-    if (n <= 0) { delay(2); continue; }
-    consumed += n; lastData = millis();
-    int totalBytes = off + n;
+    if (carry) { bb[0] = carryBuf; off = 1; carry = 0; }
+    int want = 1024 - off;
+    int got = 0;
+    uint32_t r0 = millis();
+    while (got < want && millis() - r0 < 3000) {
+      int a = s->available();
+      if (a > 0) {
+        int n = s->readBytes(bb + off + got, want - got);
+        if (n > 0) got += n;
+      } else if (!s->connected()) break;
+      else delay(2);
+    }
+    if (got == 0) {
+      // 没读到数据: 判断是流结束还是超时
+      if (!s->connected() || (total > 0 && consumed >= (size_t)total)) break;
+      if (millis() - lastData > 5000) break;  // 5s无数据超时
+      continue;
+    }
+    lastData = millis();
+    consumed += got;
+    int totalBytes = off + got;
     int samples = totalBytes / 2;
-    if (totalBytes & 1) { carry = 1; carryByte = bb[samples * 2]; }
+    if (totalBytes & 1) { carry = 1; carryBuf = bb[samples * 2]; }
+
+    // 等扬声器有空位再播(4块轮转)
     uint32_t w0 = millis();
     while (M5.Speaker.isPlaying(0) == 2 && millis() - w0 < 2000) delay(1);
-    if (samples > 0) { M5.Speaker.playRaw(pbuf[slot], samples, sr, false, 1, 0, false); slot = (slot + 1) % 4; }
+    if (samples > 0) {
+      M5.Speaker.playRaw(pbuf[slot], samples, SR, false, 1, 0, false);
+      slot = (slot + 1) % 4;
+    }
+    if (total > 0 && consumed >= (size_t)total) break;  // 读满
   }
+
   http.end();
+  // 等播放完
   uint32_t d0 = millis();
-  while (M5.Speaker.isPlaying() && millis() - d0 < 8000) delay(5);
+  while (M5.Speaker.isPlaying() && millis() - d0 < 10000) delay(5);
   M5.Speaker.stop();
   return "";
 }

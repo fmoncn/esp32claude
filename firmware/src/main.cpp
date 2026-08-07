@@ -1,7 +1,6 @@
 #include <M5Cardputer.h>
 #include <WiFi.h>
 #include <LittleFS.h>
-#include <SD.h>
 #include <SPI.h>
 #include <time.h>
 #include "esp_partition.h"
@@ -132,39 +131,51 @@ static void render() {
     if (scrollTop + VIS < (int)replyLines.size())
       canvas.fillTriangle(232, BAR_Y + 2 * LH - 2, 236, BAR_Y + 2 * LH - 2, 234, BAR_Y + 2 * LH + 2, 0x7BCF);
   }
+
+  // P1 体验改进: THINKING/SPEAKING 状态加可爱的动态视觉反馈(14岁女孩等待时不会觉得卡死)
+  if (gPhase == PH_THINKING) {
+    // 思考中: 对话框顶部显示动态省略号 + 气泡提示
+    int dots = (millis() / 400) % 4;  // 0,1,2,3 循环
+    canvas.setTextColor(0xFD20, 0x0000);  // 琥珀色
+    canvas.setCursor(4, BAR_Y);
+    canvas.print("小豆丁思考中");
+    for (int k = 0; k < dots; k++) canvas.print(".");
+    // 顶部小气泡
+    canvas.setTextColor(0x3FE6, 0x0000);
+    canvas.setCursor(120, BAR_Y);
+    canvas.print("💭");
+  } else if (gPhase == PH_SPEAKING) {
+    // 说话中: 动态声波律动(随相位变化)
+    int wave = (millis() / 120) % 5;  // 0-4 循环
+    canvas.setTextColor(0x07E0, 0x0000);  // 绿色
+    canvas.setCursor(4, BAR_Y);
+    canvas.print("小豆丁说话中");
+    // 声波条
+    for (int k = 0; k < 5; k++) {
+      int h = (k == wave) ? 6 : 3;
+      canvas.fillRect(120 + k * 5, BAR_Y + 6 - h, 3, h, 0x07E0);
+    }
+  }
   canvas.pushSprite(0, 0);
 }
 
 static void brainTask(void*);  // 定义在下方
 
-// 首次开机把精灵图从内置 Flash(LittleFS)拷到 SD 卡(为 launcher 化做准备;用户免手动拷)
-static void migrateSpritesToSD() {
-  if (!SD.exists("/sprites")) SD.mkdir("/sprites");
-  static uint8_t buf[1024];
-  for (int i = 0; i < ACTION_COUNT; i++) {
-    String p = String("/sprites/") + ACTIONS[i].name + ".bin";
-    if (SD.exists(p)) continue;
-    File src = LittleFS.open(p, "r"); if (!src) continue;
-    File dst = SD.open(p, "w"); if (!dst) { src.close(); continue; }
-    while (src.available()) { int n = src.read(buf, sizeof(buf)); if (n > 0) dst.write(buf, n); else break; }
-    dst.close(); src.close();
-  }
-}
 
 void setup() {
+  Serial.begin(115200);
+  delay(800);  // 等 USB CDC Serial 就绪, 确保诊断输出可见
   auto cfg = M5.config();
   M5Cardputer.begin(cfg, true);
   M5Cardputer.Display.setRotation(1);
   canvas.setColorDepth(16); canvas.createSprite(240, 135);
   M5.Speaker.begin(); M5.Speaker.setVolume(DS::volRef());
   LittleFS.begin(false);  // 别 format-on-fail(launcher 模式下无 littlefs 分区,精灵已在 SD)
-  // SD 卡:精灵图改放 SD(launcher 化前置);首次开机自动从内置 Flash 迁移,用户免手动拷
-  SPI.begin(40, 39, 14, 12);
-  bool sdOk = SD.begin(12, SPI, 25000000);
-  if (sdOk) migrateSpritesToSD();
-  bool useSD = sdOk && SD.exists("/sprites/idle.bin");
-  gUseSD = useSD;
-  player.begin(useSD ? (fs::FS&)SD : (fs::FS&)LittleFS); player.setAction("idle");
+  // 修复: 精灵一律走内置 Flash(LittleFS), 不用 SD 卡。
+  // 原因: 插了 SD 卡但初始化不完整时(sdCommand no token), SD 读精灵会全部失败,
+  //       导致形象变灰/无动画。LittleFS 已烧录正确的 Clawd 精灵。
+  gUseSD = false;
+  player.begin((fs::FS&)LittleFS); player.setAction("idle");
   gMtx = xSemaphoreCreateMutex();
   // 后台核跑思考+朗读,24KB 栈(HTTPS/TLS 很吃栈),钉在 core 0(主循环在 core 1)
   xTaskCreatePinnedToCore(brainTask, "brain", 24 * 1024, nullptr, 1, nullptr, 0);

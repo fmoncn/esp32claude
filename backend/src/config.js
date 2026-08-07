@@ -10,8 +10,8 @@ export const config = {
   petToken: process.env.PET_TOKEN || '',
   deepseek: {
     apiKey: process.env.DEEPSEEK_API_KEY || '',
-    baseUrl: 'https://api.deepseek.com/chat/completions',
-    model: 'deepseek-chat',
+    baseUrl: process.env.LLM_BASE_URL || 'http://YOUR_LLM_HOST:YOUR_PORT/v1/chat/completions',
+    model: process.env.LLM_MODEL || 'deepseek-v4-flash',
     temperature: 0.8,
     timeoutMs: 30000,
   },

@@ -8,6 +8,15 @@ import { transcribe, synthesize } from './voice.js';
 const app = express();
 app.use(express.json({ limit: '16kb' }));
 
+// 请求日志中间件: 记录所有请求(便于调试设备连接)
+app.use((req, res, next) => {
+  const t0 = Date.now();
+  res.on('finish', () => {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.originalUrl} -> ${res.statusCode} (${Date.now()-t0}ms) from ${req.ip}`);
+  });
+  next();
+});
+
 // CORS:允许网页模拟器从浏览器调用
 app.use((req, res, next) => {
   res.set('Access-Control-Allow-Origin', '*');
@@ -99,6 +108,20 @@ app.post('/tts', async (req, res) => {
   } catch (err) {
     console.error('[/tts] error:', err.message);
     res.status(502).json({ error: 'TTS 失败', detail: err.message });
+  }
+});
+
+// 方案Y: STT 代理接口 — 接收原始音频(WAV/PCM), 返回 {text}
+// 固件录音后整段 POST 到这里, 后端转给本地 Whisper 识别
+app.post('/stt', express.raw({ type: () => true, limit: '10mb' }), async (req, res) => {
+  try {
+    if (!req.body || !req.body.length) return res.status(400).json({ error: '音频 body 为空' });
+    const heard = await transcribe(req.body, req.headers['content-type'] || 'audio/wav');
+    if (!heard) return res.json({ text: '' });
+    res.json({ text: heard });
+  } catch (err) {
+    console.error('[/stt] error:', err.message);
+    res.status(502).json({ error: 'STT 失败', detail: err.message });
   }
 });
 

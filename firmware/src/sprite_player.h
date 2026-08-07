@@ -43,22 +43,19 @@ class SpritePlayer {
     } else { idx_++; loadFrame_(idx_); }
   }
 
-  // (x,y)=左上角;直接写画布缓冲,跳过 SPR_TRANSPARENT;facing=-1 水平镜像
+  // (x,y)=左上角;跳过 SPR_TRANSPARENT;facing=-1 水平镜像
   void draw(M5Canvas& dst, int x, int y, int facing = 1) {
     if (!cur_) return;
-    uint16_t* db = (uint16_t*)dst.getBuffer();
-    if (!db) return;
     const int dw = dst.width(), dh = dst.height();
     for (int j = 0; j < SPR_H; j++) {
       int dy = y + j;
       if (dy < 0 || dy >= dh) continue;
-      uint16_t* drow = db + dy * dw;
       const uint16_t* srow = frameBuf_ + j * SPR_W;
       for (int i = 0; i < SPR_W; i++) {
-        int dx = x + i;
+        int dx = x + (facing < 0 ? (SPR_W - 1 - i) : i);
         if ((unsigned)dx >= (unsigned)dw) continue;
-        uint16_t px = srow[facing < 0 ? (SPR_W - 1 - i) : i];
-        if (px != SPR_TRANSPARENT) drow[dx] = px;
+        uint16_t px = srow[i];
+        if (px != SPR_TRANSPARENT) dst.drawPixel(dx, dy, px);  // 用库API保证颜色格式正确
       }
     }
   }
