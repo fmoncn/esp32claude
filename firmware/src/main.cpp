@@ -390,8 +390,8 @@ void loop() {
   // 长回复自动滚动:逐行滚动,慢速;滚到底回到顶部循环,直到用户手动滚动/新输入
   if (gAutoScroll) {
     if (now >= gAutoScrollNext) {
-      if (scrollTop < gAutoScrollTarget) { scrollTop++; gAutoScrollNext = now + 3000; }
-      else { scrollTop = 0; gAutoScrollNext = now + 3000; }  // 滚到底→回到顶部循环
+      if (scrollTop < gAutoScrollTarget) { scrollTop++; gAutoScrollNext = now + 6000; }
+      else { scrollTop = 0; gAutoScrollNext = now + 6000; }  // 滚到底→回到顶部循环
     }
   }
 
