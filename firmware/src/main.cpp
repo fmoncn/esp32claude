@@ -86,7 +86,7 @@ static void setReply(const std::string& t) {
   if ((int)replyLines.size() > VIS) {
     gAutoScroll = true;
     gAutoScrollTarget = (int)replyLines.size() - VIS;
-    gAutoScrollNext = millis() + 500;  // 稍等再开始滚
+    gAutoScrollNext = millis() + 6000;  // 第一屏停留 6 秒看清再开始滚
   } else { gAutoScroll = false; }
 }
 static void setTransient(const char* a, uint32_t ms) { transientAction = a; transientUntil = millis() + ms; }
