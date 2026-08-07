@@ -162,9 +162,9 @@ static void render() {
     for (int i = 0; i < VIS; i++) {
       int li = scrollTop + i;
       if (li < 0 || li >= (int)replyLines.size()) break;
-      canvas.setTextColor(0xD3AB, 0x08A4); canvas.setCursor(4, BAR_Y + i * LH);   // Claude橙
+      canvas.setTextColor(0xFC4B, 0x08A4); canvas.setCursor(4, BAR_Y + i * LH);   // 亮橙(内容)
       canvas.print(replyLines[li].c_str());
-      if (li == 0) { canvas.setTextColor(0xFC4B, 0x08A4); canvas.setCursor(4, BAR_Y); canvas.print((petName + "：").c_str()); }  // 亮橙
+      if (li == 0) { canvas.setTextColor(0xD3AB, 0x08A4); canvas.setCursor(4, BAR_Y); canvas.print((petName + "：").c_str()); }  // Claude橙(名字)
     }
     if (scrollTop > 0) canvas.fillTriangle(232, BAR_Y + 2, 236, BAR_Y + 2, 234, BAR_Y - 2, 0x7BCF);
     if (scrollTop + VIS < (int)replyLines.size())
