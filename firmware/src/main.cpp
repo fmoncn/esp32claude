@@ -312,6 +312,7 @@ static void handleKeyboard() {
     if (c == '=') { int b = gBrightness; b = (b < 229) ? b + 26 : 255;  // 到最高 255 停止,不循环
                     gBrightness = b; M5Cardputer.Display.setBrightness(b); continue; }
     if (pinyinIME.isComposing()) { input += pinyinIME.getComposing(); pinyinIME.clear(); }  // 标点→上屏拼音
+    gAutoScroll = false;  // 用户开始打字→停止循环滚动
     input += c;
   }
   // 退格
@@ -381,11 +382,11 @@ void loop() {
     setTransient(emotionToAction(emotion), 6000);  // 说完后情绪再停留一会儿
   }
 
-  // 长回复自动滚动:逐行滚动到底部,显示全部内容后停止
+  // 长回复自动滚动:逐行滚动,慢速;滚到底回到顶部循环,直到用户手动滚动/新输入
   if (gAutoScroll) {
     if (now >= gAutoScrollNext) {
-      if (scrollTop < gAutoScrollTarget) { scrollTop++; gAutoScrollNext = now + 900; }
-      else gAutoScroll = false;  // 已滚到底,停止
+      if (scrollTop < gAutoScrollTarget) { scrollTop++; gAutoScrollNext = now + 1500; }
+      else { scrollTop = 0; gAutoScrollNext = now + 1500; }  // 滚到底→回到顶部循环
     }
   }
 
