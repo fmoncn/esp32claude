@@ -19,6 +19,8 @@ enum CardType {
   CARD_VPSMEM,     // VPS 内存
   CARD_QUOTA,      // Claude 额度
   CARD_HOLD,       // ETF持仓(总持仓/今日盈亏)
+  CARD_GAIN,       // ETF收益(实盘收益/YTD)
+  CARD_ACTION,     // ETF操作(今日无需操作/补仓信号)
   CARD_COUNT,
 };
 
@@ -44,10 +46,10 @@ inline CardType cardForScene(int idx) {
     case 3: return CARD_QUOTE;    // 高楼   → 上证指数(指数2)
     case 4: return CARD_QUOTE;    // 沙漠   → 恒生指数(指数3)
     case 5: return CARD_VPS;      // 草原   → VPS系统
-    case 6: return CARD_QUOTA;    // 海洋   → Claude额度
+    case 6: return CARD_ACTION;   // 海洋   → ETF操作(今日无需操作)
     case 7: return CARD_QUOTA;    // 雪山   → Claude额度
     case 8: return CARD_HOLD;     // 森林   → ETF持仓(总持仓/今日盈亏)
-    default: return CARD_VPSMEM;  // 太空   → VPS内存
+    default: return CARD_GAIN;    // 太空   → ETF收益(实盘收益/YTD)
   }
 }
 
@@ -187,6 +189,52 @@ inline bool fetch(int sceneIdx) {
       snprintf(c.line2, sizeof(c.line2), "盈亏 %+.0f元", dayPnl);
       c.trend = (dayPnl > 0.5) ? 1 : (dayPnl < -0.5) ? -1 : 0;  // 红涨绿跌
       c.has = true;
+      break;
+    }
+    case CARD_GAIN: {
+      // ETF收益: 第1行=实盘收益%, 第2行=YTD%
+      if (WiFi.status() != WL_CONNECTED) { snprintf(c.line1, sizeof(c.line1), "收益获取中…"); return false; }
+      WiFiClient client; HTTPClient http;
+      if (!http.begin(client, "http://LAN_IP:4004/api/data")) { snprintf(c.line1, sizeof(c.line1), "收益获取中…"); return false; }
+      http.setTimeout(6000);
+      int code = http.GET();
+      if (code != 200) { http.end(); snprintf(c.line1, sizeof(c.line1), "收益获取中…"); return false; }
+      std::string body = http.getString().c_str();
+      http.end();
+      JsonDocument d;
+      if (body.empty() || deserializeJson(d, body)) { snprintf(c.line1, sizeof(c.line1), "收益获取中…"); return false; }
+      double gain = d["ytd_data"]["actual"]["overall_pct"].as<double>();
+      double ytd = d["ytd_data"]["ytd_pct"].as<double>();
+      snprintf(c.line1, sizeof(c.line1), "实盘收益 %+.2f%%", gain);
+      snprintf(c.line2, sizeof(c.line2), "YTD %+.2f%%", ytd);
+      c.trend = (gain > 0.005) ? 1 : (gain < -0.005) ? -1 : 0;
+      c.has = true;
+      break;
+    }
+    case CARD_ACTION: {
+      // ETF操作: 无补仓信号→今日无需操作; 有信号→显示补仓建议
+      if (WiFi.status() != WL_CONNECTED) { snprintf(c.line1, sizeof(c.line1), "操作获取中…"); return false; }
+      WiFiClient client; HTTPClient http;
+      if (!http.begin(client, "http://LAN_IP:4004/api/data")) { snprintf(c.line1, sizeof(c.line1), "操作获取中…"); return false; }
+      http.setTimeout(6000);
+      int code = http.GET();
+      if (code != 200) { http.end(); snprintf(c.line1, sizeof(c.line1), "操作获取中…"); return false; }
+      std::string body = http.getString().c_str();
+      http.end();
+      JsonDocument d;
+      if (body.empty() || deserializeJson(d, body)) { snprintf(c.line1, sizeof(c.line1), "操作获取中…"); return false; }
+      JsonArray sig = d["signals"].as<JsonArray>();
+      if (sig.size() == 0) {
+        snprintf(c.line1, sizeof(c.line1), "今日无需操作");
+        snprintf(c.line2, sizeof(c.line2), "无补仓信号");
+        c.has = true;
+      } else {
+        // 有补仓信号: 取第一条简短建议
+        const char* msg = sig[0].as<const char*>();
+        snprintf(c.line1, sizeof(c.line1), "补仓信号");
+        snprintf(c.line2, sizeof(c.line2), "%s", msg ? msg : "有信号");
+        c.has = true;
+      }
       break;
     }
     default: break;
