@@ -11,9 +11,9 @@ export const config = {
   deepseek: {
     apiKey: process.env.DEEPSEEK_API_KEY || '',
     baseUrl: process.env.LLM_BASE_URL || 'http://YOUR_LLM_HOST:YOUR_PORT/v1/chat/completions',
-    model: process.env.LLM_MODEL || 'deepseek-v4-flash',
+    model: process.env.LLM_MODEL || 'gemini-3.6-flash-high',
     temperature: 0.8,
-    timeoutMs: 30000,
+    timeoutMs: 60000,  // gemini 带搜索较慢,给足时间
   },
 };
 

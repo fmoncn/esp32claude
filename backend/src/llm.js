@@ -17,6 +17,8 @@ async function callDeepSeek(messages, { json = false } = {}) {
         model: config.deepseek.model,
         messages,
         temperature: config.deepseek.temperature,
+        // gemini 实时搜索能力(反代支持 google_search grounding,服务端执行,无 tool 往返)
+        tools: [{ google_search: {} }],
         ...(json ? { response_format: { type: 'json_object' } } : {}),
       }),
       signal: controller.signal,
