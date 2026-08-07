@@ -18,6 +18,7 @@ inline int& volRef() { static int v = 160; return v; }  // 0..255 音量
 
 // 流式播放: 调后端 /tts, 边读边播。返回错误字符串(空=成功)
 inline std::string speak(const std::string& text) {
+  Serial.printf("[TTS] start speak, free heap=%u\n", ESP.getFreeHeap());
   if (WiFi.status() != WL_CONNECTED) return "nowifi";
   if (text.empty()) return "empty";
 
@@ -93,6 +94,7 @@ inline std::string speak(const std::string& text) {
   uint32_t d0 = millis();
   while (M5.Speaker.isPlaying() && millis() - d0 < 10000) delay(5);
   M5.Speaker.stop();
+  Serial.printf("[TTS] end speak, free heap=%u\n", ESP.getFreeHeap());
   return "";
 }
 

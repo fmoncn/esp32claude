@@ -25,7 +25,7 @@ static SpritePlayer player;
 static std::string input, reply = "我在,主人。", petName = "小豆丁", emotion = "neutral";
 static std::vector<std::string> replyLines;
 static int scrollTop = 0;
-static bool voiceOn = true, lastTtsFail = false;
+static bool voiceOn = false, lastTtsFail = false;  // 默认禁语音(文字优先,避免TTS重启); Fn+V 可开
 static uint32_t kbdIgnoreUntil = 0;
 
 // 思考/说话放到后台核(core 0),主循环(core 1)永不阻塞 → 背景动画一直跑
@@ -184,7 +184,7 @@ void setup() {
   if (wifiConnect()) {
     configTzTime("CST-8", "ntp.aliyun.com", "ntp.ntsc.ac.cn", "pool.ntp.org");
     delay(300); gSceneIdx = Scenes::autoIdx(curHour());  // 按作息选初始场景
-    setReply(std::string("我在,主人。") + (gUseSD ? "〔精灵已上 SD〕" : "〔SD 未就绪,走内置〕") + "打字或按住 Opt 说话;Fn+[ ] 切场景;Fn+V 语音。");
+    setReply(std::string("我在,主人。") + "打字发消息;Fn+[ ] 切场景。");
     setTransient("waving", 2500);
   } else {
     setReply("连不上 WiFi…去 config.h 检查。");
