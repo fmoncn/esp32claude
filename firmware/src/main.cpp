@@ -11,6 +11,7 @@
 #include "net.h"
 #include "sprite_player.h"
 #include "pet_state.h"
+#include "pinyin_ime.h"
 #include "scenes.h"
 #include "weather.h"
 
@@ -92,7 +93,29 @@ static void render() {
 
   canvas.fillRect(0, BAR_TOP, 240, 135 - BAR_TOP, 0x0000);
   canvas.drawFastHLine(0, BAR_TOP - 1, 240, 0x18C3);
-if (!input.empty()) {
+  // 拼音输入候选栏(组合中时显示在输入区上方)
+  if (pinyinIME.isComposing() || pinyinIME.hasCandidates()) {
+    canvas.setFont(&fonts::efontCN_12);
+    canvas.setTextColor(0xFD20, 0x0000);
+    canvas.setCursor(4, BAR_Y);
+    canvas.print("[");
+    canvas.print(pinyinIME.getComposing());
+    canvas.print("] ");
+    int pageSize = pinyinIME.getPage() < pinyinIME.getTotalPages() - 1
+                   ? 5 : (pinyinIME.getCandCount() - pinyinIME.getPage() * 5);
+    if (pageSize > 5) pageSize = 5;
+    if (pageSize < 0) pageSize = 0;
+    for (int i = 0; i < pageSize; i++) {
+      char num[4]; snprintf(num, sizeof(num), "%d.", i + 1);
+      canvas.print(num);
+      canvas.print(pinyinIME.candAt(i));
+      canvas.print(" ");
+    }
+    if (pinyinIME.getTotalPages() > 1) {
+      char pg[24]; snprintf(pg, sizeof(pg), "(%d/%d)", pinyinIME.getPage() + 1, pinyinIME.getTotalPages());
+      canvas.print(pg);
+    }
+  } else if (!input.empty()) {
     canvas.setTextColor(0x07FF, 0x0000); canvas.setCursor(4, BAR_Y);
     canvas.print(("> " + input + "_").c_str());
   } else {
@@ -140,6 +163,7 @@ void setup() {
   //       导致形象变灰/无动画。LittleFS 已烧录正确的 Clawd 精灵。
   gUseSD = false;
   player.begin((fs::FS&)LittleFS); player.setAction("idle");
+  pinyinIME.init("/config/pinyin_dict.bin");  // 拼音输入法字典(精简单字,放 LittleFS)
   gMtx = xSemaphoreCreateMutex();
   // 后台核跑思考+朗读,24KB 栈(HTTPS/TLS 很吃栈),钉在 core 0(主循环在 core 1)
   xTaskCreatePinnedToCore(brainTask, "brain", 24 * 1024, nullptr, 1, nullptr, 0);
@@ -236,9 +260,36 @@ static void handleKeyboard() {
     }
     return;
   }
-  for (char c : st.word) input += c;
-  if (st.del && !input.empty()) input.pop_back();
-  if (st.enter && !input.empty()) submitJob(input);
+  // ---- 拼音输入分流 ----
+  for (char c : st.word) {
+    if (c >= 'a' && c <= 'z') { pinyinIME.addChar(c); continue; }  // 字母→拼音
+    if (c >= 'A' && c <= 'Z') { pinyinIME.addChar(c); continue; }
+    if (c >= '1' && c <= '9' && pinyinIME.hasCandidates()) {  // 数字→选候选
+      const char* picked = pinyinIME.select(c - '0');
+      if (picked && picked[0]) input += picked;
+      continue;
+    }
+    if (c == ' ') {  // 空格→选第1个候选
+      if (pinyinIME.hasCandidates()) {
+        const char* picked = pinyinIME.select(1);
+        if (picked && picked[0]) input += picked;
+      } else if (input.empty()) { input += ' '; }
+      continue;
+    }
+    if (c == '/' || c == '?') { if (pinyinIME.hasCandidates()) pinyinIME.nextPage(); continue; }
+    if (pinyinIME.isComposing()) { input += pinyinIME.getComposing(); pinyinIME.clear(); }  // 标点→上屏拼音
+    input += c;
+  }
+  // 退格
+  if (st.del) {
+    if (pinyinIME.isComposing()) pinyinIME.backspace();
+    else if (!input.empty()) input.pop_back();
+  }
+  // 回车
+  if (st.enter) {
+    if (pinyinIME.isComposing()) { input += pinyinIME.getComposing(); pinyinIME.clear(); }
+    if (!input.empty()) submitJob(input);
+  }
 }
 
 static void roamStep(uint32_t now, int hour) {
