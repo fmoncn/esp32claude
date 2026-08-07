@@ -32,6 +32,7 @@ static bool gAutoScroll = false;          // 自动滚动中(长回复)
 static uint32_t gAutoScrollNext = 0;      // 下次推进时间
 static int gInputMode = 1;                // 1=中文拼音 0=英文(Shift 切换)
 static bool gTranslate = false;           // true=翻译模式(Alt 切换) false=聊天模式
+static int gWifiRssi = -40;               // WiFi 信号缓存(启动+定期更新,避免render频繁读异常)
 static int gAutoScrollTarget = 0;         // 目标滚动位置(底部)
 static uint32_t kbdIgnoreUntil = 0;
 
@@ -98,10 +99,8 @@ static void render() {
   player.draw(canvas, (int)roamX - SPR_W / 2, GROUND - SPR_H, facing);  // 角色在最前
 
   canvas.setFont(&fonts::efontCN_14);
-  // 右上角 WiFi 信号(4 格随强度);未连显示红叉
-  { const int wx = 205, wy = 10; bool up = WiFi.status() == WL_CONNECTED; long rs = up ? WiFi.RSSI() : 0;
-    // RSSI 可能偶尔返回 0(ESP32 运行中读取异常)→ 视为强信号(-20), 避免误显示 1 格
-    if (rs >= 0) rs = -20;
+  // 右上角 WiFi 信号(4 格随强度);未连显示红叉;用缓存值避免频繁读异常
+  { const int wx = 205, wy = 10; bool up = WiFi.status() == WL_CONNECTED; long rs = up ? gWifiRssi : 0;
     int bars = !up ? 0 : (rs >= -55 ? 4 : rs >= -65 ? 3 : rs >= -73 ? 2 : 1);
     uint16_t ac = !up ? 0x7BEF : (bars >= 3 ? 0x07E0 : bars == 2 ? 0xFFE0 : 0xFD20);
     for (int i = 0; i < 4; i++) { int bh = 2 + i * 2;
@@ -212,7 +211,8 @@ void setup() {
   setReply("连接 WiFi 中…"); render();
 
   if (wifiConnect()) {
-    Serial.printf("[WIFI] connected, RSSI=%d dBm, channel=%d\n", WiFi.RSSI(), WiFi.channel());
+    gWifiRssi = WiFi.RSSI();  // 缓存启动 RSSI
+    Serial.printf("[WIFI] connected, RSSI=%d dBm, channel=%d\n", gWifiRssi, WiFi.channel());
     configTzTime("CST-8", "ntp.aliyun.com", "ntp.ntsc.ac.cn", "pool.ntp.org");
     delay(300); gSceneIdx = Scenes::autoIdx(curHour());  // 按作息选初始场景
     setReply("请输入文本...");
@@ -264,6 +264,14 @@ static void brainTask(void*) {
     // WiFi 断了就在后台尝试重连(每 15s)
     static uint32_t reconNext = 0;
     if (WiFi.status() != WL_CONNECTED && millis() > reconNext) { WiFi.reconnect(); reconNext = millis() + 15000; }
+    // 定期更新 RSSI 缓存(每 15s)+ 打印诊断
+    static uint32_t rssiDiagNext = 0;
+    if (WiFi.status() == WL_CONNECTED && millis() > rssiDiagNext) {
+      int r = WiFi.RSSI(); if (r >= 0) r = -40;  // 异常值回退
+      gWifiRssi = r;
+      Serial.printf("[RSSI] %d dBm\n", gWifiRssi);
+      rssiDiagNext = millis() + 15000;
+    }
     // 空闲时拉天气 + 亲密度(开机一次 + 每 30 分钟);先 IP 定位。TLS 在后台核,不卡主循环
     if (gPhase == PH_IDLE && WiFi.status() == WL_CONNECTED && millis() > gWxNext) {
       if (!WX::located()) WX::geolocate();
