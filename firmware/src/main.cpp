@@ -157,16 +157,13 @@ static void render() {
 
   // P1 体验改进: THINKING/SPEAKING 状态加可爱的动态视觉反馈(14岁女孩等待时不会觉得卡死)
   if (gPhase == PH_THINKING) {
-    // 思考中: 对话框顶部显示动态省略号 + 气泡提示
-    int dots = (millis() / 400) % 4;  // 0,1,2,3 循环
+    // 思考中: 三个动态省略号(循环 . .. ...) 显示等待
+    static const char* dots[3] = {".", "..", "..."};
+    int d = (millis() / 400) % 3;
     canvas.setTextColor(0xD3AB, 0x08A4);  // Claude橙
     canvas.setCursor(4, BAR_Y);
     canvas.print("小豆丁思考中");
-    for (int k = 0; k < dots; k++) canvas.print(".");
-    // 顶部小气泡
-    canvas.setTextColor(0xFC4B, 0x08A4);  // 亮橙
-    canvas.setCursor(120, BAR_Y);
-    canvas.print("💭");
+    canvas.print(dots[d]);
   }
   canvas.pushSprite(0, 0);
 }
