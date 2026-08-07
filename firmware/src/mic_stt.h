@@ -78,19 +78,19 @@ inline uint32_t recClose() {
   switchToSpeaker();
   gRecState = REC_IDLE; gRecOpen = false;
   uint32_t bytes = gRecBytes;
+  Serial.printf("[REC] closed, bytes=%u, spoke=%d\n", bytes, gRecSpoke ? 1 : 0);
   gRecBytes = 0;
   return bytes;
 }
 inline bool recActive() { return gRecState == REC_RECORDING; }
 
 // 上传 LittleFS 里的 /rec.pcm 到后端 /stt, 返回识别文本
+// ⚠️ 后端 Whisper 需要标准 WAV(RIFF/WAVE) 格式, 先构造 44 字节 WAV 头再发 PCM。
 inline std::string uploadToStt(uint32_t pcmBytes) {
   if (WiFi.status() != WL_CONNECTED) return "";
 
   // 用 WiFiClient 直接流式发送(分块读文件写socket, 避免 malloc 大块→OOM)
-  // 构造 HTTP POST 请求: 后端 Express 的 raw body 解析支持流式接收
-  std::string host = backendHost();   // 返回 "ip:port" 或 "ip"
-  std::string base = backendBase();
+  std::string host = backendHost();
   WiFiClient client;
   if (!client.connect(backendIP(), backendPort())) return "";
 
@@ -98,14 +98,37 @@ inline std::string uploadToStt(uint32_t pcmBytes) {
   if (!f) { client.stop(); return ""; }
   size_t fsize = f.size();
 
+  // 构造 44 字节 WAV 头 (16-bit mono PCM @16000), 参考 claude-pocket make_wav_header
+  uint8_t wav[44];
+  uint32_t data_bytes = (uint32_t)fsize;
+  uint32_t sample_count = data_bytes / 2;
+  memcpy(wav, "RIFF", 4);
+  wav[4]=0x24; wav[5]=0x00; wav[6]=0x00; wav[7]=0x00;            // 36+data low
+  uint32_t riff = 36 + data_bytes;
+  memcpy(wav+4, &riff, 4);                                       // RIFF size
+  memcpy(wav+8, "WAVE", 4);
+  memcpy(wav+12, "fmt ", 4);
+  uint32_t fmt16 = 16; uint16_t pcm1=1, ch1=1, blk=2, bits16=16;
+  uint32_t sr=16000, br=32000;
+  memcpy(wav+16, &fmt16, 4);
+  memcpy(wav+20, &pcm1, 2); memcpy(wav+22, &ch1, 2);
+  memcpy(wav+24, &sr, 4); memcpy(wav+28, &br, 4);
+  memcpy(wav+32, &blk, 2); memcpy(wav+34, &bits16, 2);
+  memcpy(wav+36, "data", 4);
+  memcpy(wav+40, &data_bytes, 4);
+  (void)sample_count;
+
   // 发送 HTTP 头
   client.print("POST "); client.print((backendPath() + "/stt").c_str()); client.println(" HTTP/1.1");
   client.print("Host: "); client.println(host.c_str());
   client.println("Content-Type: audio/wav");
-  client.print("Content-Length: "); client.println(fsize);
+  client.print("Content-Length: "); client.println(44 + fsize);
   if (std::strlen(PET_TOKEN) > 0) { client.print("x-pet-token: "); client.println(PET_TOKEN); }
   client.println("Connection: close");
   client.println();
+
+  // 先发 44 字节 WAV 头
+  client.write(wav, 44);
 
   // 分块读文件发送(每块1KB, 零大块内存)
   static uint8_t chunk[1024];

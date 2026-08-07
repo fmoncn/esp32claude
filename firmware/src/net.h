@@ -38,13 +38,14 @@ inline uint16_t backendPort() {             // 默认 80
   if (c == std::string::npos) return 80;
   return (uint16_t)atoi(h.substr(c+1).c_str());
 }
-inline std::string backendPath() {          // 基路径, 如 "/" 或 "/api"
+inline std::string backendPath() {          // 基路径, 如 "/api" 或 "" (根路径)
   std::string u = BACKEND_URL;
   size_t s = u.find("//"); if (s == std::string::npos) return "";
   s += 2; size_t e = u.find('/', s);
   if (e == std::string::npos) return "";
   size_t q = u.find('/', e+1);
-  return q == std::string::npos ? "/" : u.substr(e, q-e);
+  if (q == std::string::npos) return "";   // 无子路径 → 根路径(返回空,避免 //stt)
+  return u.substr(e, q-e);
 }
 
 // 拉一次宠物状态里的亲密度(开机种子值);失败返回 -1
