@@ -289,7 +289,7 @@ static void handleKeyboard() {
   if (gPhase != PH_IDLE) return;  // 思考/说话中不收键(也防喇叭噪声触发假按键)
   if (!(M5Cardputer.Keyboard.isChange() && M5Cardputer.Keyboard.isPressed())) return;
   auto st = M5Cardputer.Keyboard.keysState();
-  if (st.opt) { togglePTT(); return; }  // 点击切换:按一次开始/再按一次停止
+  // if (st.opt) { togglePTT(); return; }  // STT 已停用, Opt 不再触发录音
   if (st.fn) {
     for (char c : st.word) {
       if (c == ',') { if (scrollTop > 0) scrollTop--; return; }
@@ -372,17 +372,17 @@ void loop() {
     if (input.empty()) roamStep(now, curHour()); else player.setAction("idle");
   }
 
-  // 录音中: 主循环每帧拉录音数据写入文件(非阻塞)
-  if (STT::recActive()) {
-    uint32_t r = STT::recUpdate();
-    if (r == 0xFFFFFFFF) {  // 超时自动停止
-      uint32_t rb = STT::recClose();
-      gRecording = false;
-      player.setAction("idle");
-      render();
-      if (rb > 3200) { std::string h = STT::uploadToStt(rb); if (!h.empty()) submitJob(h); }
-    }
-  }
+  // 录音中: 主循环每帧拉录音数据写入文件(非阻塞) — STT 已停用
+  // if (STT::recActive()) {
+  //   uint32_t r = STT::recUpdate();
+  //   if (r == 0xFFFFFFFF) {  // 超时自动停止
+  //     uint32_t rb = STT::recClose();
+  //     gRecording = false;
+  //     player.setAction("idle");
+  //     render();
+  //     if (rb > 3200) { std::string h = STT::uploadToStt(rb); if (!h.empty()) submitJob(h); }
+  //   }
+  // }
 
   player.update(now);
   render();
