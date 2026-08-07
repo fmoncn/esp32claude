@@ -463,6 +463,7 @@ void loop() {
 
 
   player.update(now);
-  render();
+  // 语音播放中: 暂停重绘, 避免高频 pushSprite 与 Speaker 的 I2S/DMA 冲突产生杂音
+  if (!TTS::gSpeaking) render();
   delay(5);
 }
