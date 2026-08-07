@@ -15,6 +15,7 @@ export const config = {
     temperature: 0.8,
     timeoutMs: 60000,  // gemini 带搜索较慢,给足时间
   },
+  azureTtsKey: process.env.AZURE_TTS_KEY || '',  // Azure Speech TTS (westus3)
 };
 
 // 宠物身份与主人称呼(persona 用;均可在 .env 覆盖)

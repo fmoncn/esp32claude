@@ -4,6 +4,7 @@ import { loadPet } from './store.js';
 import { describeState } from './pet.js';
 import { respondToPet } from './brain.js';
 import { translateText } from './llm.js';
+import { createAzureTTSStream } from './azure_tts.js';
 
 const app = express();
 app.use(express.json({ limit: '16kb' }));
@@ -75,6 +76,36 @@ app.post('/translate', async (req, res) => {
   } catch (err) {
     console.error('[/translate] error:', err.message);
     res.status(502).json({ error: '翻译服务暂时不可用', detail: err.message });
+  }
+});
+
+// TTS: 调 Azure Speech (westus3), 流式转发音频给设备(边收边传, 首字节快达)
+app.post('/tts', async (req, res) => {
+  const { text } = req.body || {};
+  if (typeof text !== 'string' || !text.trim()) {
+    return res.status(400).json({ error: 'text 必填' });
+  }
+  const t0 = Date.now();
+  try {
+    const azureStream = await createAzureTTSStream(text.trim().slice(0, 200));
+    // 告诉设备是 24kHz 16bit 单声道 WAV 流
+    res.set('Content-Type', 'audio/wav');
+    res.set('X-TTS-SampleRate', '24000');
+    res.set('X-TTS-Bits', '16');
+    res.set('X-TTS-Channels', '1');
+    // 流式转发: 收到 Azure 一块就立刻转发给设备, 不做整体缓冲
+    const reader = azureStream.getReader();
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) res.write(Buffer.from(value));
+    }
+    res.end();
+    console.log(`[/tts] OK (${Date.now() - t0}ms, ${text.slice(0, 10)}…)`);
+  } catch (err) {
+    console.error('[/tts] error:', err.message);
+    if (!res.headersSent) res.status(502).json({ error: 'TTS 服务暂时不可用', detail: err.message });
+    else res.end();
   }
 });
 
