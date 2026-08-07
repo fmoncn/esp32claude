@@ -55,7 +55,7 @@ static float roamX = 120, targetX = 120;
 static int facing = 1, roamMode = 1;
 static uint32_t roamUntil = 0;
 
-static const int GROUND = 90, BAR_TOP = 75, BAR_Y = 78, LH = 11, VIS = 5, BARW = 232;  // 一屏5行,紧凑
+static const int GROUND = 90, BAR_TOP = 93, BAR_Y = 96, LH = 12, VIS = 3, BARW = 232;  // 回复3行/屏
 
 static int curHour() { struct tm t; if (!getLocalTime(&t, 0)) return -1; return t.tm_hour; }
 
@@ -125,8 +125,15 @@ static void render() {
       canvas.print(pg);
     }
   } else if (!input.empty()) {
-    canvas.setTextColor(0x07FF, 0x0000); canvas.setCursor(4, BAR_Y);
-    canvas.print(("> " + input + "_").c_str());
+    // 输入显示 2 行(长输入自动换行)
+    canvas.setTextColor(0x07FF, 0x0000);
+    auto ilines = wrapLines("> " + input, BARW);
+    if (ilines.empty()) ilines.push_back("> ");
+    for (int i = 0; i < 2 && i < (int)ilines.size(); i++) {
+      canvas.setCursor(4, BAR_Y + i * LH);
+      canvas.print(ilines[i].c_str());
+      if (i == (int)ilines.size() - 1) canvas.print("_");  // 光标
+    }
   } else {
     for (int i = 0; i < VIS; i++) {
       int li = scrollTop + i;
