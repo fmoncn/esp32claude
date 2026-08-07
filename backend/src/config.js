@@ -15,15 +15,6 @@ export const config = {
     temperature: 0.8,
     timeoutMs: 30000,
   },
-  // 语音:STT + TTS 都走 DashScope(阿里云百炼),同一 key/endpoint
-  dashscope: {
-    apiKey: process.env.DASHSCOPE_API_KEY || '',
-    endpoint: 'https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation',
-    asrModel: 'qwen3-asr-flash',
-    ttsModel: 'qwen3-tts-flash',
-    ttsVoice: process.env.PET_VOICE || 'Ethan',
-    ttsSampleRate: 24000,
-  },
 };
 
 // 宠物身份与主人称呼(persona 用;均可在 .env 覆盖)

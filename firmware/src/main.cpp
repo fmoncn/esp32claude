@@ -13,8 +13,6 @@
 #include "pet_state.h"
 #include "scenes.h"
 #include "weather.h"
-#include "dashscope.h"
-#include "mic_stt.h"
 
 // TLS + WebSocket 握手很吃栈;加大 loop 任务栈
 SET_LOOP_TASK_STACK_SIZE(32 * 1024);
@@ -25,11 +23,10 @@ static SpritePlayer player;
 static std::string input, reply = "我在,主人。", petName = "小豆丁", emotion = "neutral";
 static std::vector<std::string> replyLines;
 static int scrollTop = 0;
-static bool voiceOn = false, lastTtsFail = false;  // 默认禁语音(文字优先,避免TTS重启); Fn+V 可开
 static uint32_t kbdIgnoreUntil = 0;
 
 // 思考/说话放到后台核(core 0),主循环(core 1)永不阻塞 → 背景动画一直跑
-enum { PH_IDLE = 0, PH_THINKING = 1, PH_SPEAKING = 2 };
+enum { PH_IDLE = 0, PH_THINKING = 1 };
 static volatile int gPhase = PH_IDLE;
 static SemaphoreHandle_t gMtx = nullptr;
 static std::string gJobMsg;                              // 主→任务:待处理的话(gMtx 保护)
@@ -37,12 +34,8 @@ static volatile bool gJobReady = false;
 static std::string gResReply, gResEmotion, gResName;     // 任务→主:结果(gMtx 保护)
 static volatile uint32_t gResSeq = 0;
 static uint32_t gLastSeq = 0;
-static volatile bool gTtsFailFlag = false;
 
 // 录音中状态(底部角标用,不再全屏黑)
-static volatile bool gRecording = false;
-static uint32_t gRecStart = 0;
-static const char* gPttStatus = "";
 
 // 场景系统:10 场景混搭风,室内按作息自动切 + Fn+[/]/\ 手动
 static int gSceneIdx = 0;
@@ -89,14 +82,6 @@ static void render() {
   player.draw(canvas, (int)roamX - SPR_W / 2, GROUND - SPR_H, facing);  // 角色在最前
 
   canvas.setFont(&fonts::efontCN_12);
-  // 右上角喇叭音量图标:声波数=音量(小/中/大);静音显示 X
-  { uint16_t col = voiceOn ? (lastTtsFail ? 0xFD20 : 0x07E0) : 0x7BEF;
-    canvas.fillRect(176, 4, 3, 4, col);
-    canvas.fillTriangle(179, 2, 179, 10, 184, 6, col);
-    if (voiceOn) { int v = DS::volRef(), lv = v < 120 ? 1 : (v < 200 ? 2 : 3);
-      for (int w = 0; w < lv; w++) canvas.drawLine(186 + w * 2, 4 - w, 186 + w * 2, 8 + w, col); }
-    else { canvas.drawLine(186, 3, 192, 9, 0xF800); canvas.drawLine(192, 3, 186, 9, 0xF800); } }
-
   // 右上角 WiFi 信号(4 格随强度);未连显示红叉
   { const int wx = 222, wy = 10; bool up = WiFi.status() == WL_CONNECTED; long rs = up ? WiFi.RSSI() : 0;
     int bars = !up ? 0 : (rs >= -55 ? 4 : rs >= -65 ? 3 : rs >= -73 ? 2 : 1);
@@ -107,16 +92,7 @@ static void render() {
 
   canvas.fillRect(0, BAR_TOP, 240, 135 - BAR_TOP, 0x0000);
   canvas.drawFastHLine(0, BAR_TOP - 1, 240, 0x18C3);
-  if (gRecording) {  // 录音中:底部红色提示 + 闪烁录音点(画面上半照常动)
-    canvas.setFont(&fonts::efontCN_12);
-    if ((millis() / 400) % 2) canvas.fillCircle(10, BAR_Y + 3, 4, 0xF800);
-    else canvas.drawCircle(10, BAR_Y + 3, 4, 0xF800);
-    canvas.setTextColor(0xF800, 0x0000); canvas.setCursor(22, BAR_Y);
-    char b[48]; snprintf(b, sizeof(b), "正在听  %s  %lus", gPttStatus, (unsigned long)((millis() - gRecStart) / 1000));
-    canvas.print(b);
-    canvas.setTextColor(0x7BEF, 0x0000); canvas.setCursor(22, BAR_Y + LH);
-    canvas.print("松开 Opt 结束");
-  } else if (!input.empty()) {
+if (!input.empty()) {
     canvas.setTextColor(0x07FF, 0x0000); canvas.setCursor(4, BAR_Y);
     canvas.print(("> " + input + "_").c_str());
   } else {
@@ -144,17 +120,6 @@ static void render() {
     canvas.setTextColor(0x3FE6, 0x0000);
     canvas.setCursor(120, BAR_Y);
     canvas.print("💭");
-  } else if (gPhase == PH_SPEAKING) {
-    // 说话中: 动态声波律动(随相位变化)
-    int wave = (millis() / 120) % 5;  // 0-4 循环
-    canvas.setTextColor(0x07E0, 0x0000);  // 绿色
-    canvas.setCursor(4, BAR_Y);
-    canvas.print("小豆丁说话中");
-    // 声波条
-    for (int k = 0; k < 5; k++) {
-      int h = (k == wave) ? 6 : 3;
-      canvas.fillRect(120 + k * 5, BAR_Y + 6 - h, 3, h, 0x07E0);
-    }
   }
   canvas.pushSprite(0, 0);
 }
@@ -169,7 +134,6 @@ void setup() {
   M5Cardputer.begin(cfg, true);
   M5Cardputer.Display.setRotation(1);
   canvas.setColorDepth(16); canvas.createSprite(240, 135);
-  M5.Speaker.begin(); M5.Speaker.setVolume(DS::volRef());
   LittleFS.begin(false);  // 别 format-on-fail(launcher 模式下无 littlefs 分区,精灵已在 SD)
   // 修复: 精灵一律走内置 Flash(LittleFS), 不用 SD 卡。
   // 原因: 插了 SD 卡但初始化不完整时(sdCommand no token), SD 读精灵会全部失败,
@@ -202,7 +166,7 @@ static void submitJob(const std::string& msg) {
   input.clear();
 }
 
-// 后台核(core 0):askPet(DeepSeek) → 出结果 → DS::speak(TTS)。全程不碰屏幕/键盘/精灵
+// 后台核(core 0): askPet(DeepSeek) → 出结果 → 刷新文字。不碰屏幕/键盘/精灵
 static void brainTask(void*) {
   for (;;) {
     if (gJobReady) {
@@ -216,18 +180,7 @@ static void brainTask(void*) {
       gResReply = r.reply; gResEmotion = r.emotion; gResName = r.name; gResSeq++;
       xSemaphoreGive(gMtx);
 
-      gPhase = PH_SPEAKING;
-      if (voiceOn) {
-        std::string er = DS::speak(r.reply);
-        gTtsFailFlag = !er.empty();
-        if (!er.empty()) {
-          xSemaphoreTake(gMtx, portMAX_DELAY);
-          gResReply = r.reply + "  〔TTS:" + er + "〕"; gResSeq++;
-          xSemaphoreGive(gMtx);
-        }
-      } else gTtsFailFlag = false;
-
-      kbdIgnoreUntil = millis() + 300;  // 说完冷却,防喇叭噪声触发假按键
+      kbdIgnoreUntil = millis() + 300;  // 回复后冷却,防误触
       gPhase = PH_IDLE;
     }
     // WiFi 断了就在后台尝试重连(每 15s)
@@ -241,34 +194,6 @@ static void brainTask(void*) {
       gWxNext = millis() + 1800000UL;
     }
     delay(15);
-  }
-}
-
-// 点击切换录音 (参考 claude-pocket tap-to-toggle):
-// 按一次 Opt → 开始录音; 再按一次 Opt → 停止并发送
-static void togglePTT() {
-  if (!STT::recActive()) {
-    // IDLE → 开始录音
-    gRecording = true; gRecStart = millis(); gPttStatus = "录音中(再按Opt发送)…";
-    player.setAction("thinking");            // 倾听姿态
-    render();
-    STT::recOpen();
-  } else {
-    // RECORDING → 停止并处理
-    uint32_t bytes = STT::recClose();
-    gRecording = false;
-    player.setAction("idle");
-    render();
-    if (bytes > 3200 && STT::gRecSpoke) {
-      gPttStatus = "识别中…";
-      std::string heard = STT::uploadToStt(bytes);
-      if (!heard.empty()) submitJob(heard);
-      else { setReply(std::string("(没听清)") ); lastTtsFail = false; }
-    } else {
-      setReply("(没听清,再试一次)");
-    }
-    input.clear();
-    kbdIgnoreUntil = millis() + 400;
   }
 }
 
@@ -289,14 +214,10 @@ static void handleKeyboard() {
   if (gPhase != PH_IDLE) return;  // 思考/说话中不收键(也防喇叭噪声触发假按键)
   if (!(M5Cardputer.Keyboard.isChange() && M5Cardputer.Keyboard.isPressed())) return;
   auto st = M5Cardputer.Keyboard.keysState();
-  // if (st.opt) { togglePTT(); return; }  // STT 已停用, Opt 不再触发录音
   if (st.fn) {
     for (char c : st.word) {
       if (c == ',') { if (scrollTop > 0) scrollTop--; return; }
       if (c == '.') { if (scrollTop + VIS < (int)replyLines.size()) scrollTop++; return; }
-      if (c == 'v' || c == 'V') { voiceOn = !voiceOn; return; }
-      if (c == '/') { int v = DS::volRef(); v = (v < 120) ? 160 : (v < 200 ? 230 : 90);
-                      DS::volRef() = v; M5.Speaker.setVolume(v); return; }
       if (c == '[') { gAutoScene = false; gSceneIdx = (gSceneIdx + Scenes::count() - 1) % Scenes::count();
                       setReply(std::string("场景：") + Scenes::name(gSceneIdx)); return; }
       if (c == ']') { gAutoScene = false; gSceneIdx = (gSceneIdx + 1) % Scenes::count();
@@ -352,17 +273,11 @@ void loop() {
     xSemaphoreGive(gMtx);
     emotion = em; if (!nm.empty()) petName = nm;
     setReply(rp);
-    lastTtsFail = gTtsFailFlag;
     setTransient(emotionToAction(emotion), 6000);  // 说完后情绪再停留一会儿
   }
 
   if (gPhase == PH_THINKING) {
     player.setAction("thinking");                  // 思考中:沉思动画(背景照常动)
-  } else if (gPhase == PH_SPEAKING) {
-    const char* a = emotionToAction(emotion);      // 说话中:按这句话的情绪做反应
-    player.setAction(a);
-    const ActionMeta* m = SpritePlayer::find(a);
-    if (m && !m->loop && player.finished()) player.setAction("idle");  // 非循环表情放完→回 idle,保持在动
   } else if (!transientAction.empty() && now < transientUntil) {
     player.setAction(transientAction.c_str());
     const ActionMeta* m = SpritePlayer::find(transientAction.c_str());
@@ -372,17 +287,6 @@ void loop() {
     if (input.empty()) roamStep(now, curHour()); else player.setAction("idle");
   }
 
-  // 录音中: 主循环每帧拉录音数据写入文件(非阻塞) — STT 已停用
-  // if (STT::recActive()) {
-  //   uint32_t r = STT::recUpdate();
-  //   if (r == 0xFFFFFFFF) {  // 超时自动停止
-  //     uint32_t rb = STT::recClose();
-  //     gRecording = false;
-  //     player.setAction("idle");
-  //     render();
-  //     if (rb > 3200) { std::string h = STT::uploadToStt(rb); if (!h.empty()) submitJob(h); }
-  //   }
-  // }
 
   player.update(now);
   render();
