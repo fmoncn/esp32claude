@@ -7,9 +7,9 @@ const RESPONSE_SCHEMA_HINT = `只输出一个 JSON 对象(不要 markdown、不�
   "emotion": "从 happy / sad / angry / surprised / thinking / sleepy / in_love / excited / neutral 里挑一个最贴合的",
   "remember": "若出现值得长期记住的、关于${PET.ownerTitle}的事(决定/偏好/计划/近况),写一句;否则空字符串",
   "stat_changes": { "mood": 0, "hunger": 0, "energy": 0, "affection": 0 },
-  "suggestions": ["推理${PET.ownerTitle}接下来可能想了解/想做的事,给2-3条简洁的下一步建议(每条≤12字)", "...", "..."]
+  "suggestions": []
 }
-"suggestions" 规则:主动推理主人下一步想了解什么,给出 2-3 条可点击的快捷建议(如"看看A股行情""翻译一段英文""查一下天气"),每条≤12字、具体可执行、与当前话题相关。若此刻没有合适的后续话题,给空数组 []。`;
+"suggestions" 严格规则(重要):默认给空数组 []。只有当对话里出现了明确、具体、可执行的下一步(如刚聊到股票/天气/要翻译/有未决事项),你确定推荐这些对${PET.ownerTitle}真正有用时,才给 2-3 条具体可点的建议(每条≤12字)。寒暄、客套、简单回复、或没有明确下一步时,一律给 []。绝对不要为了填满而编建议。`;
 
 export function buildSystemPrompt(pet) {
   const lines = [
