@@ -77,20 +77,20 @@ static const int GROUND = 90, BAR_TOP = 85, BAR_Y = 88, LH = 14, VIS = 3, BARW =
 static int curHour() { struct tm t; if (!getLocalTime(&t, 0)) return -1; return t.tm_hour; }
 
 static std::vector<std::string> wrapLines(const std::string& s, int maxW) {
-  // 每行最大字符数: 中文/全角=1单位, ASCII=0.5单位。屏幕宽 maxW px, 中文字约14px
-  // 每行能放 maxW/14 ≈ 16 个中文。用单位计数, 不依赖 canvas.textWidth(U8g2返回值偏小)
-  const int PER_LINE = maxW / 14;   // 每行最多中文数(约16)
+  // 半单位制: 中文/全角=2单位, ASCII=1单位(英文约半宽)。每行 maxW/14≈16中文宽=32半单位。
+  // 用单位计数, 不依赖 canvas.textWidth(U8g2返回值偏小)。ASCII不占单位会导致英文行超宽漏字。
+  const int PER_HALF = (maxW / 14) * 2;   // 每行半单位数(中文2单位, 英文1单位)
   std::vector<std::string> out; std::string line; int units = 0;
   for (size_t i = 0; i < s.size();) {
     unsigned char ch = s[i]; int len = 1;
     if (ch >= 0xF0) len = 4; else if (ch >= 0xE0) len = 3; else if (ch >= 0xC0) len = 2;
     std::string g = s.substr(i, len); i += len;
     if (g == "\n") { out.push_back(line); line.clear(); units = 0; continue; }
-    // 中文(多字节)记1单位, ASCII记0.5单位(两个英文占一个中文宽度)
-    int u = (len > 1 || (unsigned char)g[0] >= 0x80) ? 1 : 0;
-    if (units + u > PER_LINE && !line.empty()) { out.push_back(line); line.clear(); units = 0; }
+    // 中文(多字节)=2单位, ASCII=1单位(两个英文约等于一个中文宽度)
+    int u = (len > 1 || (unsigned char)g[0] >= 0x80) ? 2 : 1;
+    if (units + u > PER_HALF && !line.empty()) { out.push_back(line); line.clear(); units = 0; }
     line += g; units += u;
-    if (units > PER_LINE) units = PER_LINE;  // 长英文串保护
+    if (units > PER_HALF) units = PER_HALF;  // 超长串保护
   }
   if (!line.empty()) out.push_back(line);
   return out;
