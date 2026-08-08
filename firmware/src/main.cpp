@@ -179,9 +179,9 @@ static void render() {
     for (int i = 0; i < VIS; i++) {
       int li = scrollTop + i;
       if (li < 0 || li >= (int)replyLines.size()) break;
-      canvas.setTextColor(li == 0 ? 0xD3AB : 0xFC4B, 0x08A4);  // 第0行含"名字:"用Claude橙, 其余亮橙
+      canvas.setTextColor(0xFC4B, 0x08A4);  // 回复全部统一亮橙(名字前缀已在第0行wrapLines拼入)
       canvas.setCursor(4, BAR_Y + i * LH);
-      canvas.print(replyLines[li].c_str());   // 名字前缀已包含在 replyLines 第0行(wrapLines时拼入)
+      canvas.print(replyLines[li].c_str());
     }
     if (scrollTop > 0) canvas.fillTriangle(232, BAR_Y + 2, 236, BAR_Y + 2, 234, BAR_Y - 2, 0x7BCF);
     if (scrollTop + VIS < (int)replyLines.size())
