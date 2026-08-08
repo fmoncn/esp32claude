@@ -1,154 +1,150 @@
-# 克劳德 · Clawd 🦀
+# Clawd 🦀 — An AI Pixel Pet That Lives in Your Pocket
 
-**一只住在 M5Stack Cardputer 里的 AI 像素宠物。会说话、会撒娇、会主动找你聊天、还喜欢被你抚摸。**
+**A living, breathing AI companion for the M5Stack Cardputer.** It talks, remembers, comes to you when you're idle, and loves being touched. And it runs entirely on an ESP32-S3 with **no PSRAM**.
 
-**English** · [中文](README.zh-CN.md)
-
-> 把你的掌上 Cardputer 变成一只活生生的电子宠物 —— 它记得你、理解你、会回应你的触摸，
-> 还能在 10 个昼夜场景里自己过日子。**全部跑在无 PSRAM 的 ESP32-S3 上，极省内存。**
+**[English](README.md)** · **[中文](README.zh-CN.md)**
 
 ---
 
-## ✨ 它为什么不一样？
+![Clawd across the 10 day/night scenes](docs/demo.gif)
 
-**🐾 会摸你 (抚摸交互)**
-内置 **BMI270 加速度计**感知你的动作 —— 轻轻抚摸它，它会眯眼撒娇"喵~最舒服了"；
-抱在怀里摇晃，它会困倦入睡；粗暴晃动，它会委屈地"呜…头好晕"。**不需要任何额外硬件。**
-
-**🗣️ 会听你说话 (语音输入)**
-按住 `Opt` 键说话，设备直连 Azure 语音识别你的话，自动填入输入框。
-语音输入经过反复优化 —— **首次实现不爆内存的流式录音**。
-
-**💬 会主动找你 (主动对话)**
-不只会被动回答。克劳德会根据自己的记忆和你的聊天记录，**在你空闲时主动开口**，
-用轻柔的三连音提醒你 —— 像真正的宠物一样想念你。
-
-**🧠 真记忆 + 真人格**
-后端 Node "大脑" 有 3 层记忆（短期 + 滚动摘要 + 关于你的长期事实），
-克劳德会记得你的喜好、计划、心情，用符合它性格的方式回应。
-
-**🌍 真实世界数据**
-时钟/日期（NTP）、**实时天气**（open-meteo 自动定位）、WiFi 信号。
-还能显示**你的投资组合行情**（标普/纳指/上证/恒生）、持仓、收益、补仓信号。
-
-**🎨 10 个昼夜场景**
-"像素全息工作台"风格 —— 深蓝蓝图网格 + 霓虹辉光。室内场景按作息自动切换，
-室外场景手动切换。克劳德在其中自由漫步、吃饭、睡觉、工作。
-
-**🧵 永不卡顿**
-思考在**第二个 CPU 核心**运行，主循环持续渲染动画 —— 克劳德"思考"时也一直在动。
+> Turn your handheld Cardputer into a pet that actually feels alive — it remembers you, understands your mood, reacts to your touch, and lives its own little life across 10 scenes. **Zero-PSRAM, extreme memory efficiency.**
 
 ---
 
-## 🧰 硬件
+## ✨ Why Clawd is different
 
-- **M5Stack Cardputer / Cardputer ADV**（ESP32-S3FN8，8MB Flash，**无 PSRAM**）
-- 同局域网的一台电脑运行后端"大脑"
-- 可选 microSD（多 app launcher 模式）
+### 🐾 It loves being touched
+Clawd uses the onboard **BMI270 accelerometer** to *feel* your gestures — no extra hardware.
+Stroke it gently and it'll purr *"喵~最舒服了"*. Rock it in your arms and it'll drift off to sleep. Handle it roughly and it'll protest *"呜…头好晕"*.
+
+### 🗣️ It listens to you
+Hold `Opt` and speak — your voice is recognized on-device via **Azure Speech-to-Text** and filled into the chat box automatically. Push-to-talk, hands-free.
+
+### 💬 It comes to you
+Clawd isn't just reactive. Based on your chat history and what it remembers, it'll **initiate conversation when you're idle**, nudging you with a soft three-note chime — like a pet that actually misses you.
+
+### 🧠 Real memory, real personality
+A Node.js "brain" with **3-layer memory** (short-term + rolling summary + long-term facts about you). Clawd remembers your plans, your worries, your preferences — and responds in a warm, human way.
+
+### 🌍 Real-world data on screen
+Live clock & date (NTP), **real weather** (auto-located via open-meteo), WiFi signal — plus **your investment portfolio** (S&P / Nasdaq / SSE / Hang Seng), holdings, gains, and rebalancing signals.
+
+### 🎨 10 day/night scenes
+A "pixel holographic workstation" — deep-blue blueprint grids, neon glow, crisp pixel art. Indoor scenes auto-switch by time of day; outdoor scenes switch manually. Clawd roams, eats, sleeps, and works inside them.
+
+### 🧵 Never lags
+Thinking runs on the **second CPU core**, so the main loop keeps rendering animation — Clawd keeps moving even while it "thinks".
 
 ---
 
-## 🚀 快速开始
+## 🧰 Hardware
 
-### 1. 后端（大脑）
+| Component | Detail |
+|-----------|--------|
+| **Board** | M5Stack Cardputer / Cardputer ADV (ESP32-S3FN8, 8MB flash, **no PSRAM**) |
+| **Backend** | Any computer on the same LAN runs the Node "brain" |
+| **Optional** | microSD (multi-app launcher mode) |
+
+---
+
+## 🚀 Quick Start
+
+### 1. Backend (the brain)
 
 ```bash
 cd backend
-cp .env.example .env          # 填 DEEPSEEK_API_KEY 等
+cp .env.example .env          # add your API keys
 npm install
-npm start                     # http://0.0.0.0:8787
+npm start                     # serves on http://0.0.0.0:8787
 ```
 
-### 2. 精灵图
+### 2. Sprites
 
 ```bash
-python tools/gen_sprites.py   # 生成默认像素宠物
-python tools/pack_sprites.py  # → 设备格式
+python tools/gen_sprites.py   # generate the default pixel pet
+python tools/pack_sprites.py  # → device format
 ```
 
-### 3. 固件
+### 3. Firmware
 
 ```bash
 cd firmware
-cp src/config.h.example src/config.h   # 填 WiFi、后端 IP
-pio run -t upload            # 编译 + 烧录
-pio run -t uploadfs          # 上传精灵到 LittleFS
+cp src/config.h.example src/config.h   # set WiFi, backend IP
+pio run -t upload            # build + flash
+pio run -t uploadfs          # upload sprites to LittleFS
 ```
 
 ---
 
-## 🎮 操作
+## 🎮 Controls
 
-| 操作 | 按键 |
-|------|------|
-| 打字聊天 | 输入 + `Enter` |
-| **语音输入** | 按住 `Opt` 说话，松开发送 |
-| **抚摸** | 轻轻摸/摇晃设备（无需按键）|
-| 切场景 | `Fn` + `[` / `]` |
-| 场景跟作息 | `Fn` + `\` |
-| 中英输入 | `Shift`（Aa）|
-| 翻译模式 | `Alt` |
-| 长回复翻页 | `Fn` + `,` / `.` |
-| 播放表情 | `Fn` + `1`…`0` |
-| 亮度 | `-` / `=` |
+| Action | Key |
+|--------|-----|
+| Type & chat | type + `Enter` |
+| **Voice input** | hold `Opt`, speak, release to send |
+| **Touch / pet it** | stroke or rock the device (no key needed) |
+| Next / prev scene | `Fn` + `]` / `[` |
+| Scenes follow schedule | `Fn` + `\` |
+| CN / EN input | `Shift` (Aa) |
+| Translate mode | `Alt` |
+| Page long replies | `Fn` + `.` / `,` |
+| Play an emotion | `Fn` + `1`…`0` |
+| Brightness | `-` / `=` |
 
 ---
 
-## 🏗 架构
+## 🏗 Architecture
 
 ```
 ┌──────────────┐  WiFi/LAN   ┌────────────────────┐   HTTPS   ┌────────────┐
 │  Cardputer    │  ────────►  │  backend (Node)    │ ────────► │  LLM       │
-│  firmware     │  /chat     │  brain + 3层记忆   │           │ (DeepSeek) │
-│ (C++/PIO)     │  ◄────────  │  data/<pet>.json   │           └────────────┘
+│  firmware     │  /chat     │  brain + 3-layer    │           │ (DeepSeek) │
+│ (C++/PIO)     │  ◄────────  │  memory            │           └────────────┘
 └──────┬───────┘             └────────────────────┘
-       │ 设备直连: Azure STT · open-meteo · Dell Hub(行情)
+       │  device-direct: Azure STT · open-meteo · Dell Hub (indices)
        ▼
-  BMI270 加速度计(抚摸交互) · I2C 独立于语音 I2S
+  BMI270 accelerometer (pet-touch) · I2C independent of voice I2S
 ```
 
-- **为什么用后端？** API key 不暴露在设备上，记忆有地方存，换模型只改一处。
-- **为什么设备直连？** 语音输入（Azure STT）和天气（open-meteo）从设备干净 WiFi 直达；
-  只有对话大脑走电脑。
+- **Why a backend?** Keeps API keys off the device, gives memory a home, and lets you swap models in one place.
+- **Why device-direct?** Voice input (Azure STT) and weather (open-meteo) reach the device directly over clean WiFi; only the chat brain goes through your computer.
 
 ---
 
-## 🛠 技术亮点（省内存的硬功夫）
+## 🛠 Engineering Highlights (the hard-won parts)
 
-- **无 PSRAM（~327KB RAM）**：单全屏 canvas + 精灵按动作流式加载；TLS 很吃栈，
-  loop 任务栈加大 + 思考放第二核心。
-- **语音输入不爆内存**：双缓冲乒乓录音 + `isRecording()` 等填满 + 流式写 LittleFS，
-  只占 ~8KB 静态内存 —— 首次在无 PSRAM 上稳定实现语音输入。
-- **抚摸交互零内存**：BMI270 加速度计手势检测（抚摸/摇晃/粗暴），只用 ~32B 静态缓冲。
-- **主动对话零内存**：智能逻辑全在后端，固件只做已有 HTTP 轮询 + 内置 `tone()` 蜂鸣。
-- **ES8311 codec** 用 GPIO 复位（禁用 I2C Wire 复位，避免死机），NS4150 功放静音消电流声。
+Clawd is built for **no-PSRAM ESP32-S3** (~327KB RAM). These are the tricks that make it work:
+
+- **No PSRAM** — single full-screen canvas, sprites streamed per action; TLS is heavy, so the loop stack is enlarged and thinking runs on the second core.
+- **Voice input without OOM** — double-buffered ping-pong recording + `isRecording()` wait + streaming to LittleFS, only ~8KB static RAM. The first stable no-PSRAM voice input.
+- **Pet-touch with ~zero RAM** — BMI270 gesture detection (stroke / rock / rough) using just ~32B of static state.
+- **Proactive chat with ~zero RAM** — all the intelligence lives in the backend; the firmware just polls HTTP and plays the built-in `tone()` chime.
+- **ES8311 codec** reset via GPIO (not I2C Wire, avoids crashes); NS4150 amp muted to kill idle noise.
 
 ---
 
-## 📁 仓库结构
+## 📁 Repo Layout
 
 ```
-firmware/     ESP32-S3 固件(PlatformIO)。scenes.h 场景渲染, main.cpp 主程序, stt.h 语音,
-              pet_touch.h 抚摸交互
-backend/      Node/Express "大脑": LLM 对话 + 3层记忆 + /tts + /proactive
-sim/          浏览器设备孪生 + 场景预览
-tools/        gen_sprites.py(生成像素宠物) + pack_sprites.py(转设备格式)
-sprites_src/  默认像素宠物源帧
+firmware/     ESP32-S3 firmware (PlatformIO). scenes.h = scene renderer,
+              main.cpp = app, stt.h = voice input, pet_touch.h = touch interaction
+backend/      Node/Express "brain": LLM chat + 3-layer memory + proactive + translate
+sim/          Browser device twin + scene preview
+tools/        gen_sprites.py (generate pet) + pack_sprites.py (device format)
+sprites_src/  Source frames for the bundled pixel pet
 ```
 
-> 注：`/tts` 语音输出端点在固件不支持硬件播放后已移除；语音输入（STT）仍可用。
+---
+
+## 📜 License
+
+[Apache-2.0](LICENSE).
 
 ---
 
-## 📜 许可证
+## 🙏 Credits
 
-[Apache-2.0](LICENSE)。
+LLM: [DeepSeek](https://deepseek.com) (or any OpenAI-compatible endpoint) · Voice input: [Azure Speech](https://azure.microsoft.com/products/ai-services/ai-speech/) · Weather: [open-meteo](https://open-meteo.com) · Hardware: [M5Stack Cardputer](https://m5stack.com)
 
----
-
-## 🙏 致谢
-
-LLM: [DeepSeek](https://deepseek.com)（可换任意 OpenAI 兼容端点）· 语音输入: [Azure Speech](https://azure.microsoft.com/products/ai-services/ai-speech/) ·
-天气: [open-meteo](https://open-meteo.com) · 硬件: [M5Stack Cardputer](https://m5stack.com)
-
-> 与上述公司无关联，请自带 API key。
+> Not affiliated with or endorsed by any of the above. Bring your own API keys.
