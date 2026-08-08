@@ -57,7 +57,7 @@ app.post('/chat', async (req, res) => {
       return res.status(400).json({ error: 'petId 和 message 必填' });
     }
     const out = await respondToPet(petId, message);
-    res.json({ reply: out.reply, emotion: out.emotion, name: out.name, stats: out.stats });
+    res.json({ reply: out.reply, emotion: out.emotion, name: out.name, stats: out.stats, suggestions: out.suggestions || [] });
   } catch (err) {
     console.error('[/chat] error:', err.message);
     res.status(502).json({ error: '宠物大脑暂时不在线', detail: err.message });

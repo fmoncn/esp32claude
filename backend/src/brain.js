@@ -26,5 +26,5 @@ export async function respondToPet(petId, userText) {
     await savePet(pet);
   }
 
-  return { reply, emotion: result.emotion, name: pet.name, stats: pet.stats, ok: result.ok };
+  return { reply, emotion: result.emotion, name: pet.name, stats: pet.stats, ok: result.ok, suggestions: result.suggestions || [] };
 }

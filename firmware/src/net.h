@@ -12,6 +12,9 @@ struct PetReply {
   std::string emotion = "neutral";
   std::string name;
   int intimacy = -1;  // 后端 /chat 返回的 stats.intimacy(-1=未知)
+  // 推理建议菜单: 最多3条, 每条≤12字(固定缓冲省内存)。sugCount=实际条数
+  int sugCount = 0;
+  char sug[3][13];    // 3 × 13 字节 = 39B 静态
 };
 
 // 从 BACKEND_URL 推出基址(去掉末尾 /chat)
@@ -170,6 +173,15 @@ inline PetReply askPet(const std::string& message) {
         const char* name = res["name"] | "";
         out.reply = reply; out.emotion = emotion; out.name = name;
         float iv = res["stats"]["intimacy"] | -1.0f; out.intimacy = iv < 0 ? -1 : (int)(iv + 0.5f);
+        // 推理建议: 解析 suggestions 数组(最多3条, 固定缓冲省内存)
+        out.sugCount = 0;
+        if (res["suggestions"].is<JsonArray>()) {
+          for (JsonVariant s : res["suggestions"].as<JsonArray>()) {
+            if (out.sugCount >= 3) break;
+            const char* t = s | "";
+            if (t && *t) { strncpy(out.sug[out.sugCount], t, 12); out.sug[out.sugCount][12] = 0; out.sugCount++; }
+          }
+        }
       } else {
         out.reply = "(没听懂大脑的话)"; out.emotion = "sleepy";
       }

@@ -59,12 +59,21 @@ function normalizeReply(parsed, raw) {
 async function requestPet(messages) {
   const raw = await callDeepSeek(messages, { json: true });
   const parsed = extractJson(raw) || {};
+  // suggestions: 推理主人下一步建议(2-3条, 每条≤12字; 无则空数组)
+  let suggestions = [];
+  if (Array.isArray(parsed.suggestions)) {
+    suggestions = parsed.suggestions
+      .map((s) => String(s).trim().slice(0, 12))
+      .filter(Boolean)
+      .slice(0, 3);
+  }
   return {
     reply: normalizeReply(parsed, raw),
     emotion: String(parsed.emotion || 'neutral').trim(),
     remember: String(parsed.remember || '').trim(),
     statChanges:
       parsed.stat_changes && typeof parsed.stat_changes === 'object' ? parsed.stat_changes : {},
+    suggestions,
   };
 }
 
