@@ -17,6 +17,7 @@
 #include "weather.h"
 #include "dell_hub.h"
 #include "stt.h"
+#include "pet_touch.h"
 
 // TLS + WebSocket 握手很吃栈;加大 loop 任务栈
 SET_LOOP_TASK_STACK_SIZE(32 * 1024);
@@ -210,6 +211,7 @@ void setup() {
   M5Cardputer.Display.setBrightness(gBrightness);  // 默认亮度 50/255
   gIdleSince = millis();  // 省电关机:开机即开始空闲计时
   canvas.setColorDepth(16); canvas.createSprite(240, 135);
+  PetTouch::init();  // 抚摸交互:初始化 BMI270 加速度计(零内存,硬件I2C独立于语音I2S)
   LittleFS.begin(false);  // 别 format-on-fail(launcher 模式下无 littlefs 分区,精灵已在 SD)
   // 修复: 精灵一律走内置 Flash(LittleFS), 不用 SD 卡。
   // 原因: 插了 SD 卡但初始化不完整时(sdCommand no token), SD 读精灵会全部失败,
@@ -262,6 +264,34 @@ static void ringProactive() {
   M5Cardputer.Speaker.tone(784, 200); delay(220);  // G5
   M5Cardputer.Speaker.stop();
   M5Cardputer.Speaker.setVolume(0);    // 播完静音(消 NS4150 电流声)
+}
+
+// 抚摸交互反馈: 手势 → 动画 + 音效(用内置tone零内存)。返回是否触发(防止连续)
+static bool handleTouch(PetTouch::Gesture g) {
+  M5Cardputer.Speaker.setVolume(70);  // 轻柔音量
+  switch (g) {
+    case PetTouch::PET:   // 抚摸: 眯眼开心 + 满足单音
+      player.setAction("happy");
+      setTransient("happy", 3000);
+      M5Cardputer.Speaker.tone(659, 120); delay(130);   // E5 满足
+      break;
+    case PetTouch::ROCK:  // 摇晃: 安抚入睡 + 舒缓双音
+      player.setAction("sleepy");
+      setTransient("sleepy", 4000);
+      M5Cardputer.Speaker.tone(523, 150); delay(160);   // C5
+      M5Cardputer.Speaker.tone(392, 200); delay(220);   // G4 更低的安抚音
+      break;
+    case PetTouch::ABUSE: // 粗暴: 头晕/生气 + 低沉警示音
+      player.setAction("surprised");
+      setTransient("surprised", 4000);
+      M5Cardputer.Speaker.tone(196, 180); delay(200);   // G3 低音
+      M5Cardputer.Speaker.tone(147, 250); delay(280);   // D3 更低
+      break;
+    default: M5Cardputer.Speaker.stop(); return false;
+  }
+  M5Cardputer.Speaker.stop();
+  M5Cardputer.Speaker.setVolume(0);  // 播完静音
+  return true;
 }
 
 // 后台核(core 0): askPet(DeepSeek) → 出结果 → 刷新文字。不碰屏幕/键盘/精灵
@@ -514,6 +544,15 @@ void loop() {
       submitJob(text);  // 提交给 LLM 对话
     } else {
       setReply("没听清,请再试");
+    }
+  }
+
+  // 抚摸交互: 空闲时检测手势(不干扰语音/思考), 触发动画+音效
+  if (gPhase == PH_IDLE && STT::state() == STT::STT_IDLE) {
+    PetTouch::Gesture g = PetTouch::update();
+    if (g != PetTouch::NONE) {
+      gIdleSince = millis();  // 有操作,重置省电计时
+      handleTouch(g);
     }
   }
 
