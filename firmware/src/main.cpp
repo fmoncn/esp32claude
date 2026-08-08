@@ -39,6 +39,10 @@ static int gLastCardScene = -1;           // 上次拉取卡片的场景(变化�
 static uint32_t gCardNext = 0;            // 卡片下次刷新时间(每60s)
 static int gAutoScrollTarget = 0;         // 目标滚动位置(底部)
 static uint32_t kbdIgnoreUntil = 0;
+// 主动对话: 克劳德主动找主人说话(轮询后端 /proactive + 三连音提醒)
+static uint32_t gProNext = 0;             // 下次主动轮询时间(每60s)
+static char gProMsg[80] = {0};            // 主动消息缓冲(省内存:固定80字符)
+static uint32_t gProRingUntil = 0;        // 三连音播报冷却(防反复)
 
 // 思考/说话放到后台核(core 0),主循环(core 1)永不阻塞 → 背景动画一直跑
 enum { PH_IDLE = 0, PH_THINKING = 1 };
@@ -247,6 +251,16 @@ static void doPTT() {
   gIdleSince = millis();
   STT::start();
   setReply("请说话…松开Opt发送");
+}
+
+// 轻柔爱的三连音(上行琶音 C5→E5→G5, 温暖感), 用内置 tone 零运行期内存
+static void ringProactive() {
+  M5Cardputer.Speaker.setVolume(60);   // 轻柔音量
+  M5Cardputer.Speaker.tone(523, 150); delay(170);  // C5
+  M5Cardputer.Speaker.tone(659, 150); delay(170);  // E5
+  M5Cardputer.Speaker.tone(784, 200); delay(220);  // G5
+  M5Cardputer.Speaker.stop();
+  M5Cardputer.Speaker.setVolume(0);    // 播完静音(消 NS4150 电流声)
 }
 
 // 后台核(core 0): askPet(DeepSeek) → 出结果 → 刷新文字。不碰屏幕/键盘/精灵
@@ -502,6 +516,21 @@ void loop() {
       submitJob(text);  // 提交给 LLM 对话
     } else {
       setReply("没听清,请再试");
+    }
+  }
+
+  // 主动对话: 每60s轮询后端 /proactive, 空闲时克劳德主动找主人说话
+  if (WiFi.status() == WL_CONNECTED && millis() > gProNext) {
+    gProNext = millis() + 60000;
+    if (gPhase == PH_IDLE && STT::state() == STT::STT_IDLE) {  // 空闲才提醒
+      if (Hub::fetchProactive(gProMsg, sizeof(gProMsg))) {
+        setReply(std::string("克劳德：") + gProMsg);   // 显示主动消息
+        if (millis() > gProRingUntil) {               // 三连音提醒(冷却防反复)
+          ringProactive();
+          gProRingUntil = millis() + 15000;
+        }
+        setTransient("thinking", 5000);                // 克劳德沉思一下
+      }
     }
   }
 

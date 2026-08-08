@@ -3,6 +3,7 @@ import { config } from './config.js';
 import { loadPet } from './store.js';
 import { describeState } from './pet.js';
 import { respondToPet } from './brain.js';
+import { proactiveMessage } from './proactive.js';
 import { translateText } from './llm.js';
 import { createAzureTTSStream } from './azure_tts.js';
 
@@ -60,6 +61,17 @@ app.post('/chat', async (req, res) => {
   } catch (err) {
     console.error('[/chat] error:', err.message);
     res.status(502).json({ error: '宠物大脑暂时不在线', detail: err.message });
+  }
+});
+
+// 主动对话: 克劳德根据空闲时长+记忆主动找主人说话(固件轮询拉取)
+app.get('/proactive/:id', async (req, res) => {
+  try {
+    const out = await proactiveMessage(req.params.id);
+    res.json(out);  // { has:false } 表示此刻不打扰; { has:true, message, emotion } 表示有主动话
+  } catch (err) {
+    console.error('[/proactive] error:', err.message);
+    res.json({ has: false });  // 出错时不打扰,静默
   }
 });
 

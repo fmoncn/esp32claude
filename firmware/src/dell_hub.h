@@ -242,4 +242,26 @@ inline bool fetch(int sceneIdx) {
   return c.has;
 }
 
+// 主动对话: 拉后端 /proactive 看克劳德是否要主动找主人说话。
+// 返回 true 表示有主动消息(已存入 msg 静态缓冲), false 表示此刻不打扰。
+// 省内存: 只用一块 80 字符静态缓冲, 不堆分配。
+inline bool fetchProactive(char* msg, size_t n) {
+  if (WiFi.status() != WL_CONNECTED) return false;
+  WiFiClient client; HTTPClient http;
+  if (!http.begin(client, "http://LAN_IP:8787/proactive/girl")) return false;
+  http.setTimeout(8000);
+  int code = http.GET();
+  if (code != 200) { http.end(); return false; }
+  std::string body = http.getString().c_str();
+  http.end();
+  if (body.empty()) return false;
+  JsonDocument d;
+  if (deserializeJson(d, body)) return false;
+  if (!(d["has"] | false)) return false;
+  const char* m = d["message"] | "";
+  if (!m[0]) return false;
+  snprintf(msg, n, "%s", m);
+  return true;
+}
+
 }  // namespace Hub
