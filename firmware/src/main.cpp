@@ -241,6 +241,14 @@ static void submitJob(const std::string& msg) {
   input.clear();
 }
 
+// 按住 Opt 说话: 开始录音(状态机), 松开/5秒后自动上传 Azure STT → 提交对话
+static void doPTT() {
+  if (STT::state() != STT::STT_IDLE) return;
+  gIdleSince = millis();
+  STT::start();
+  setReply("请说话…松开Opt发送");
+}
+
 // 后台核(core 0): askPet(DeepSeek) → 出结果 → 刷新文字。不碰屏幕/键盘/精灵
 static void brainTask(void*) {
   for (;;) {
@@ -314,12 +322,7 @@ static void handleKeyboard() {
   {
     auto os = M5Cardputer.Keyboard.keysState();
     if (os.opt) {
-      if (STT::state() == STT::STT_IDLE) {
-        STT::start();
-        setReply("请说话…再按Opt结束");
-      } else if (STT::state() == STT::STT_LISTEN) {
-        STT::stopAndRecognize();
-      }
+      doPTT();   // 按住 Opt 说话
       return;
     }
   }
