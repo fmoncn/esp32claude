@@ -28,7 +28,7 @@
 
 - **设备**：M5Stack Cardputer ADV（ESP32-S3，无 PSRAM）
 - **板卡**：`board = m5stack-stamps3`，`platform = espressif32@6.9.0`
-- **固件编译烧录在 Mac**（`fmon@LAN_IP`，`~/.local/bin/pio`）；Dell 无串口/工具链慢
+- **固件编译烧录在 Mac**（`USER@LAN_IP`，`~/.local/bin/pio`）；Dell 无串口/工具链慢
 - **后端**：Dell（`LAN_IP`）Node/Express，PM2 托管 `xiaodouding-backend`（:8787）
 - **Dell Hub**（`LAN_IP:4000/4004`）：行情/持仓/VPS/Claude 额度等 JSON API，局域网无鉴权
 - **语音链路**：
