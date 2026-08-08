@@ -268,26 +268,19 @@ static void ringProactive() {
 
 // 抚摸交互反馈: 手势 → 动画 + 音效(内置tone零内存) + 固定互动模板(零内存)
 static bool handleTouch(PetTouch::Gesture g) {
-  M5Cardputer.Speaker.setVolume(70);  // 轻柔音量
   // 随机模板: 用手势类型挑一句(固定字符串常量, 零堆分配)
   int r = (int)(esp_random() % 3);   // 0/1/2 随机
   switch (g) {
-    case PetTouch::PET: {  // 抚摸: 眯眼开心 + 满足音 + 撒娇
+    case PetTouch::PET: {  // 抚摸(上下/左右3次): 眯眼开心 + 满足音 + 撒娇
+      M5Cardputer.Speaker.setVolume(20);   // 轻柔音量
       player.setAction("happy");
       setTransient("happy", 3000);
       M5Cardputer.Speaker.tone(659, 120); delay(130);   // E5 满足
       static const char* t[] = { "喵~最舒服了", "好喜欢被摸", "再摸摸嘛" };
       setReply(t[r]);  break;
     }
-    case PetTouch::ROCK: {  // 摇晃: 安抚入睡 + 舒缓音 + 困倦
-      player.setAction("sleepy");
-      setTransient("sleepy", 4000);
-      M5Cardputer.Speaker.tone(523, 150); delay(160);   // C5
-      M5Cardputer.Speaker.tone(392, 200); delay(220);   // G4 更低的安抚音
-      static const char* t[] = { "好困…睡着了", "摇啊摇,真舒服", "陪我睡会儿" };
-      setReply(t[r]);  break;
-    }
-    case PetTouch::ABUSE: {  // 粗暴: 头晕/生气 + 警示音 + 委屈
+    case PetTouch::ABUSE: {  // 粗暴(剧烈运动3次): 头晕/生气 + 警示音(稍大) + 委屈
+      M5Cardputer.Speaker.setVolume(30);   // 警示音稍大一点(30/255)
       player.setAction("surprised");
       setTransient("surprised", 4000);
       M5Cardputer.Speaker.tone(196, 180); delay(200);   // G3 低音
