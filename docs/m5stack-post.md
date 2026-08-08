@@ -5,7 +5,7 @@
 
 ---
 
-**Title:** 小豆丁 (xiaodouding) — an LLM pixel pet that lives on the Cardputer
+**Title:** 克劳德 (clawd) — an LLM pixel pet that lives on the Cardputer
 
 Hi everyone! I turned my **M5Stack Cardputer** into a little AI pixel pet and open-sourced it.
 

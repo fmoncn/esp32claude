@@ -6,7 +6,7 @@
   mouth: smile/open/flat (嘴巴)
   bob: 呼吸浮动
   legs: 腿部摆动
-让 Clawd 像原生小豆丁一样自然动起来 + 有丰富表情。
+让 Clawd 像原生克劳德一样自然动起来 + 有丰富表情。
 """
 import json, math, os
 from PIL import Image, ImageDraw

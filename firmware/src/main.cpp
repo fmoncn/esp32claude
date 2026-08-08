@@ -24,7 +24,7 @@ SET_LOOP_TASK_STACK_SIZE(32 * 1024);
 static M5Canvas canvas(&M5Cardputer.Display);
 static SpritePlayer player;
 
-static std::string input, reply = "请输入文本...", petName = "小豆丁", emotion = "neutral";
+static std::string input, reply = "请输入文本...", petName = "克劳德", emotion = "neutral";
 static std::vector<std::string> replyLines;
 static int scrollTop = 0;
 static uint8_t gBrightness = 50;          // 屏幕亮度 0-255(默认 50);-= 键调
@@ -184,7 +184,7 @@ static void render() {
     int d = (millis() / 400) % 3;
     canvas.setTextColor(0xD3AB, 0x08A4);  // Claude橙
     canvas.setCursor(4, BAR_Y);
-    canvas.print("小豆丁思考中");
+    canvas.print("克劳德思考中");
     canvas.print(dots[d]);
   }
   canvas.pushSprite(0, 0);

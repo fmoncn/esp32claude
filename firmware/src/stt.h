@@ -7,7 +7,7 @@
 #include <string>
 
 // 语音识别 STT — 设备直连 Azure Speech (westus3)
-// 方案参考原版小豆丁 mic_stt.h(在 Cardputer 上验证过能正常录音):
+// 方案参考原版克劳德 mic_stt.h(在 Cardputer 上验证过能正常录音):
 //   1. switchToMic: Speaker.end + gpio_reset_pin(43/46) 复位 ES8311 codec
 //      (用 GPIO 复位而非 I2C Wire — Wire 复位会导致死机)
 //   2. Mic.config magnification=48 (增益)
@@ -32,7 +32,7 @@ static uint32_t recStart = 0;
 static bool initialized = false;
 static File g_rec;
 
-// 切到麦克风 (原版小豆丁方式: GPIO 复位 ES8311)
+// 切到麦克风 (原版克劳德方式: GPIO 复位 ES8311)
 static void switchToMic() {
   M5Cardputer.Speaker.end(); delay(40);
   gpio_reset_pin(GPIO_NUM_43); gpio_reset_pin(GPIO_NUM_46); delay(10);  // 复位 ES8311 codec

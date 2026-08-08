@@ -20,7 +20,7 @@ export const config = {
 
 // 宠物身份与主人称呼(persona 用;均可在 .env 覆盖)
 export const PET = {
-  name: process.env.PET_NAME || '小豆丁',
+  name: process.env.PET_NAME || '克劳德',
   species: process.env.PET_SPECIES || '掌上 AI 伙伴',
   ownerName: process.env.PET_OWNER_NAME || '主人',
   ownerTitle: process.env.PET_OWNER_TITLE || '主人',

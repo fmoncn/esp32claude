@@ -1,4 +1,4 @@
-# 小豆丁 · xiaodouding
+# 克劳德 · clawd
 
 [English](README.md) · **中文** · ▶ [**在浏览器里直接玩**](https://huaspirit123.github.io/xiaodouding/)
 

@@ -1,4 +1,4 @@
-# Contributing to 小豆丁 (xiaodouding)
+# Contributing to 克劳德 (clawd)
 
 Thanks for your interest! This is a hobby/maker project — PRs and ideas are very welcome.
 

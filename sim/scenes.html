@@ -2,7 +2,7 @@
 <html lang="zh">
 <head>
 <meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>小豆丁 · 场景预览(混搭风 · 10 场景)</title>
+<title>克劳德 · 场景预览(混搭风 · 10 场景)</title>
 <style>
   :root{--gold:#ffc83a;--cyan:#35d6ff}
   *{box-sizing:border-box}
@@ -22,7 +22,7 @@
 </style>
 </head>
 <body>
-  <h1>小豆丁 · <b>混搭风「像素全息工程台」 — 10 场景</b></h1>
+  <h1>克劳德 · <b>混搭风「像素全息工程台」 — 10 场景</b></h1>
   <div class="device"><div class="screen"><canvas id="c" width="240" height="135"></canvas></div></div>
   <div class="bar"><span class="lab">场景</span><span id="scenes"></span></div>
   <div class="bar"><span class="lab">时段</span><span id="times"></span>
@@ -173,7 +173,7 @@ function drawIron(){const sh=sheets[act];if(!(sh&&sh.complete&&sh.naturalWidth))
 /* ===== 主循环 ===== */
 function bottomBar(){px(0,BAR,240,135-BAR,'#0a0f16');px(0,BAR,240,1,'#243040');
  ctx.textBaseline='top';ctx.font='11px "PingFang SC",Menlo,monospace';
- ctx.fillStyle='#3ef03e';ctx.fillText('小豆丁：',4,98);ctx.fillStyle='#cdd8e8';ctx.fillText('场景『'+scene.name+'』'+(scene.indoor?'🏠':'🌄'),46,98);
+ ctx.fillStyle='#3ef03e';ctx.fillText('克劳德：',4,98);ctx.fillStyle='#cdd8e8';ctx.fillText('场景『'+scene.name+'』'+(scene.indoor?'🏠':'🌄'),46,98);
  ctx.fillStyle='#67788c';ctx.font='10px Menlo';ctx.fillText('←/→ 切场景 · 点我挥手 · 天气真实',4,116);}
 function render(){const t=performance.now()/1000,now=performance.now();hz=scene.hz;
  bg(hz,(hourNow()>=20||hourNow()<6));
