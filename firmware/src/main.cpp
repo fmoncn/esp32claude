@@ -77,15 +77,20 @@ static const int GROUND = 90, BAR_TOP = 85, BAR_Y = 88, LH = 14, VIS = 3, BARW =
 static int curHour() { struct tm t; if (!getLocalTime(&t, 0)) return -1; return t.tm_hour; }
 
 static std::vector<std::string> wrapLines(const std::string& s, int maxW) {
-  std::vector<std::string> out; std::string line; int w = 0;
+  // 每行最大字符数: 中文/全角=1单位, ASCII=0.5单位。屏幕宽 maxW px, 中文字约14px
+  // 每行能放 maxW/14 ≈ 16 个中文。用单位计数, 不依赖 canvas.textWidth(U8g2返回值偏小)
+  const int PER_LINE = maxW / 14;   // 每行最多中文数(约16)
+  std::vector<std::string> out; std::string line; int units = 0;
   for (size_t i = 0; i < s.size();) {
     unsigned char ch = s[i]; int len = 1;
     if (ch >= 0xF0) len = 4; else if (ch >= 0xE0) len = 3; else if (ch >= 0xC0) len = 2;
     std::string g = s.substr(i, len); i += len;
-    if (g == "\n") { out.push_back(line); line.clear(); w = 0; continue; }
-    int gw = canvas.textWidth(g.c_str());
-    if (w + gw > maxW && !line.empty()) { out.push_back(line); line.clear(); w = 0; }
-    line += g; w += gw;
+    if (g == "\n") { out.push_back(line); line.clear(); units = 0; continue; }
+    // 中文(多字节)记1单位, ASCII记0.5单位(两个英文占一个中文宽度)
+    int u = (len > 1 || (unsigned char)g[0] >= 0x80) ? 1 : 0;
+    if (units + u > PER_LINE && !line.empty()) { out.push_back(line); line.clear(); units = 0; }
+    line += g; units += u;
+    if (units > PER_LINE) units = PER_LINE;  // 长英文串保护
   }
   if (!line.empty()) out.push_back(line);
   return out;
@@ -174,9 +179,9 @@ static void render() {
     for (int i = 0; i < VIS; i++) {
       int li = scrollTop + i;
       if (li < 0 || li >= (int)replyLines.size()) break;
-      canvas.setTextColor(0xFC4B, 0x08A4); canvas.setCursor(4, BAR_Y + i * LH);   // 亮橙(内容)
-      canvas.print(replyLines[li].c_str());
-      if (li == 0) { canvas.setTextColor(0xD3AB, 0x08A4); canvas.setCursor(4, BAR_Y); canvas.print((petName + "：").c_str()); }  // Claude橙(名字)
+      canvas.setTextColor(li == 0 ? 0xD3AB : 0xFC4B, 0x08A4);  // 第0行含"名字:"用Claude橙, 其余亮橙
+      canvas.setCursor(4, BAR_Y + i * LH);
+      canvas.print(replyLines[li].c_str());   // 名字前缀已包含在 replyLines 第0行(wrapLines时拼入)
     }
     if (scrollTop > 0) canvas.fillTriangle(232, BAR_Y + 2, 236, BAR_Y + 2, 234, BAR_Y - 2, 0x7BCF);
     if (scrollTop + VIS < (int)replyLines.size())
@@ -424,7 +429,7 @@ static void handleKeyboard() {
   // ---- 输入分流(中文拼音 / 英文) ----
   for (char c : st.word) {
     if (c == 0x2a || c == 0x08) continue;  // 过滤退格键 HID 值,避免乱码框
-    if (c == 0x00 || c == 0x35) {  // Esc 键 或 ·(反引号)键 → 退出回 launcher
+    if (c == 0x00 || c == 0x60) {  // Esc 键 或 `(反引号)键 → 退出回 launcher (0x60=`ASCII, 0x35是数字5勿拦截)
       setReply("退出中…回到 launcher"); render();
       bootBackToLauncher();
       setReply("当前是整机直刷模式,没有 launcher 可回。"); return;
