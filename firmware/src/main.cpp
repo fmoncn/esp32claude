@@ -28,8 +28,9 @@ static std::string input, reply = "请输入文本...", petName = "克劳德", e
 static std::vector<std::string> replyLines;
 static int scrollTop = 0;
 static uint8_t gBrightness = 50;          // 屏幕亮度 0-255(默认 50);-= 键调
-static uint32_t gIdleSince = 0;           // 最后操作时间(省电关机计时)
-static bool gShutdownWarned = false;      // 已显示关机提示
+static uint32_t gIdleSince = 0;           // 最后操作时间(省电调暗计时)
+static bool gShutdownWarned = false;      // 已显示调暗提示
+static bool gDimmed = false;              // 已进入待机调暗(亮度0,等待按键恢复)
 static bool gAutoScroll = false;          // 自动滚动中(长回复)
 static uint32_t gAutoScrollNext = 0;      // 下次推进时间
 static int gInputMode = 1;                // 1=中文拼音 0=英文(Shift 切换)
@@ -415,11 +416,15 @@ static void handleKeyboard() {
       continue;
     }
     if (c == '/' || c == '?') { if (pinyinIME.hasCandidates()) pinyinIME.nextPage(); continue; }
-    // 亮度快捷键: - 降低10%, = 增加10%
-    if (c == '-') { int b = gBrightness; b = (b > 26) ? b - 26 : 0;  // 到最低 0 停止,不循环
-                    gBrightness = b; M5Cardputer.Display.setBrightness(b); continue; }
-    if (c == '=') { int b = gBrightness; b = (b < 229) ? b + 26 : 255;  // 到最高 255 停止,不循环
-                    gBrightness = b; M5Cardputer.Display.setBrightness(b); continue; }
+    // 亮度快捷键: - 降低10%, = 增加10% (从待机调暗状态按 -/= 会先恢复亮度)
+    if (c == '-') {
+      if (gDimmed) { gDimmed = false; M5Cardputer.Display.setBrightness(gBrightness); gIdleSince = millis(); }
+      int b = gBrightness; b = (b > 26) ? b - 26 : 0;  // 到最低 0 停止,不循环
+      gBrightness = b; M5Cardputer.Display.setBrightness(b); continue; }
+    if (c == '=') {
+      if (gDimmed) { gDimmed = false; M5Cardputer.Display.setBrightness(gBrightness); gIdleSince = millis(); }
+      int b = gBrightness; b = (b < 229) ? b + 26 : 255;  // 到最高 255 停止,不循环
+      gBrightness = b; M5Cardputer.Display.setBrightness(b); continue; }
     if (pinyinIME.isComposing()) { input += pinyinIME.getComposing(); pinyinIME.clear(); }  // 标点→上屏拼音
     gAutoScroll = false;  // 用户开始打字→停止循环滚动
     input += c;
@@ -448,29 +453,22 @@ static void roamStep(uint32_t now, int hour) {
   }
 }
 
-// 省电关机:10分钟无操作 → 提示 → M5PM1 断电关机(拨 off/on 开关开机)
-static void checkIdleShutdown() {
+// 省电调暗:10分钟无操作 → 屏幕亮度降为0(不关机,不深睡);按 -= 亮度键恢复
+static void checkIdleDim() {
   uint32_t now = millis();
   const uint32_t IDLE_MS = 600000UL;       // 10 分钟
   if (now - gIdleSince < IDLE_MS) return;  // 仍在活跃期内
-
-  // 超过 10 分钟:显示关机提示
-  if (!gShutdownWarned) {
-    gShutdownWarned = true;
-    setReply("闲置 10 分钟,即将关机…");
-    render();
-    delay(3000);  // 短暂提示
-  }
-  // 真正断电关机(M5PM1 切断 ESP32 电源;物理 off/on 开关重新上电)
-  M5.Power.M5pm1.powerOff();
-  // 若 powerOff 失败(未初始化等),兜底深睡
-  esp_deep_sleep_start();
+  if (gDimmed) return;                      // 已调暗,等待按键恢复
+  // 超过 10 分钟: 亮度降为 0(省电), 不关机
+  gDimmed = true;
+  gShutdownWarned = true;
+  M5Cardputer.Display.setBrightness(0);
 }
 
 void loop() {
   M5Cardputer.update();
   handleKeyboard();
-  checkIdleShutdown();
+  checkIdleDim();
   uint32_t now = millis();
 
   if (gAutoScene) { int want = Scenes::autoIdx(curHour()); if (want != gSceneIdx) gSceneIdx = want; }  // 室内按作息自动切

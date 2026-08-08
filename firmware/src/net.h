@@ -71,25 +71,41 @@ inline bool wifiConnect(uint32_t timeoutMs = 15000) {
   WiFi.mode(WIFI_STA);
   WiFi.setAutoReconnect(true);  // 开启底层自动重连
   WiFi.persistent(true);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  uint32_t t0 = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - t0 < timeoutMs) {
-    delay(200);
+  // 多 WiFi: 主(TP)优先, 失败试热点(ou的iPhone)
+  const char* ssids[] = { WIFI_SSID, WIFI2_SSID };
+  const char* pwds[] = { WIFI_PASSWORD, WIFI2_PASSWORD };
+  for (int k = 0; k < 2; k++) {
+    WiFi.begin(ssids[k], pwds[k]);
+    uint32_t t0 = millis();
+    while (WiFi.status() != WL_CONNECTED && millis() - t0 < timeoutMs / 2) delay(200);
+    if (WiFi.status() == WL_CONNECTED) return true;
+    WiFi.disconnect();
   }
-  return WiFi.status() == WL_CONNECTED;
+  // 两个都失败: 诊断打印附近网络, 排查 SSID
+  int n = WiFi.scanNetworks();
+  Serial.printf("[WIFI] 连接失败, 附近 %d 个网络:\n", n);
+  for (int i = 0; i < n && i < 12; i++) Serial.printf("  %s (%d dBm)\n", WiFi.SSID(i).c_str(), WiFi.RSSI(i));
+  return false;
 }
 
-// 非阻塞 WiFi 守护: 掉线自动重连(带5秒冷却, 不阻塞主循环)
+// 非阻塞 WiFi 守护: 掉线自动重连(带5秒冷却, 不阻塞主循环), 主/热点轮流试
 inline bool ensureWiFi() {
   if (WiFi.status() == WL_CONNECTED) return true;
   static uint32_t lastTryMs = 0;
   if (millis() - lastTryMs < 5000) return false;  // 5秒冷却防刷
   lastTryMs = millis();
   WiFi.disconnect();
-  WiFi.reconnect();
-  uint32_t start = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - start < 2000) delay(50);
-  return WiFi.status() == WL_CONNECTED;
+  // 主(TP)优先, 失败试热点(ou的iPhone)
+  const char* ssids[] = { WIFI_SSID, WIFI2_SSID };
+  const char* pwds[] = { WIFI_PASSWORD, WIFI2_PASSWORD };
+  for (int k = 0; k < 2; k++) {
+    WiFi.begin(ssids[k], pwds[k]);
+    uint32_t start = millis();
+    while (WiFi.status() != WL_CONNECTED && millis() - start < 2000) delay(50);
+    if (WiFi.status() == WL_CONNECTED) return true;
+    WiFi.disconnect();
+  }
+  return false;
 }
 
 // 把一句话发给大脑,返回 {reply, emotion, name}
