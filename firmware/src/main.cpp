@@ -18,7 +18,6 @@
 #include "dell_hub.h"
 #include "stt.h"
 #include "pet_touch.h"
-#include "tts_play.h"
 
 // TLS + WebSocket 握手很吃栈;加大 loop 任务栈
 SET_LOOP_TASK_STACK_SIZE(32 * 1024);
@@ -50,9 +49,6 @@ static uint32_t gProRingUntil = 0;        // 三连音播报冷却(防反复)
 // 推理建议菜单: 克劳德给主人 1/2/3 可选择的下一步建议(固定缓冲省内存)
 static int gSugCount = 0;                 // 建议条数(0=无菜单)
 static char gSug[3][13] = {{0}};          // 3 × 13 字节 = 39B 静态
-
-// 语音输出: 克劳德回复后朗读(Fn+V 切换开/关)
-static bool gVoiceOn = true;
 
 // 思考/说话放到后台核(core 0),主循环(core 1)永不阻塞 → 背景动画一直跑
 enum { PH_IDLE = 0, PH_THINKING = 1 };
@@ -348,11 +344,6 @@ static void brainTask(void*) {
         gSugCount = r.sugCount;
         for (int k = 0; k < gSugCount; k++) { strncpy(gSug[k], r.sug[k], 12); gSug[k][12] = 0; }
         xSemaphoreGive(gMtx);
-        // 语音输出: 开语音则朗读克劳德的回复(阻塞, 播完继续)
-        if (gVoiceOn && !r.reply.empty()) {
-          Serial.println("[TTS] 开始朗读克劳德回复");
-          TTSPlay::play(r.reply);
-        }
       }
 
       kbdIgnoreUntil = millis() + 300;  // 回复后冷却,防误触
@@ -440,11 +431,6 @@ static void handleKeyboard() {
           bootBackToLauncher();  // 成功则重启不返回;失败=整机模式:
           setReply("当前是整机直刷模式,没有 launcher 可回(装了 launcher 后此键才有效)。"); }
         else { armUntil = millis() + 3000; setReply("再按一次 Fn+Q 退出回 launcher。"); }
-        return;
-      }
-      if (c == 'v' || c == 'V') {  // Fn+V: 切换语音输出开/关
-        gVoiceOn = !gVoiceOn;
-        setReply(gVoiceOn ? "语音输出：开" : "语音输出：关");
         return;
       }
       const char* a = hotkeyAction(c); if (a) { setTransient(a, 4000); return; }

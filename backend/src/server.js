@@ -102,7 +102,7 @@ app.post('/tts', async (req, res) => {
     const azureStream = await createAzureTTSStream(text.trim().slice(0, 200));
     // 告诉设备是 24kHz 16bit 单声道 WAV 流
     res.set('Content-Type', 'audio/wav');
-    res.set('X-TTS-SampleRate', '24000');
+    res.set('X-TTS-SampleRate', '48000');
     res.set('X-TTS-Bits', '16');
     res.set('X-TTS-Channels', '1');
     // 流式转发: 收到 Azure 一块就立刻转发给设备, 不做整体缓冲
