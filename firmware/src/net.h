@@ -78,13 +78,20 @@ inline bool wifiConnect(uint32_t timeoutMs = 15000) {
     WiFi.begin(ssids[k], pwds[k]);
     uint32_t t0 = millis();
     while (WiFi.status() != WL_CONNECTED && millis() - t0 < timeoutMs / 2) delay(200);
-    if (WiFi.status() == WL_CONNECTED) return true;
+    if (WiFi.status() == WL_CONNECTED) {
+      // 打印实际连接的 AP 详情(mesh 排查)
+      Serial.printf("[WIFI] 已连接 %s 信号=%d dBm BSSID=%s ch=%d\n",
+        WiFi.SSID().c_str(), WiFi.RSSI(), WiFi.BSSIDstr().c_str(), WiFi.channel());
+      return true;
+    }
     WiFi.disconnect();
   }
-  // 两个都失败: 诊断打印附近网络, 排查 SSID
+  // 两个都失败: 扫描打印附近网络(含 BSSID, 排查 mesh 多 AP)
   int n = WiFi.scanNetworks();
   Serial.printf("[WIFI] 连接失败, 附近 %d 个网络:\n", n);
-  for (int i = 0; i < n && i < 12; i++) Serial.printf("  %s (%d dBm)\n", WiFi.SSID(i).c_str(), WiFi.RSSI(i));
+  for (int i = 0; i < n && i < 15; i++)
+    Serial.printf("  %s (%d dBm) BSSID=%s ch=%d\n", WiFi.SSID(i).c_str(), WiFi.RSSI(i),
+                  WiFi.BSSIDstr(i).c_str(), WiFi.channel(i));
   return false;
 }
 
@@ -110,53 +117,48 @@ inline bool ensureWiFi() {
 
 // 把一句话发给大脑,返回 {reply, emotion, name}
 inline PetReply askPet(const std::string& message) {
-  PetReply out;
-  if (!ensureWiFi()) {  // 使用 ensureWiFi 自动重连
-    out.reply = "(网络似乎溜走了,正在重连…)";
-    out.emotion = "sad";
-    return out;
-  }
-
-  WiFiClient client; // 本地后端走纯 HTTP,省内存(无 PSRAM,别碰 TLS)
-  HTTPClient http;
-  if (!http.begin(client, BACKEND_URL)) {
-    out.reply = "(连不上大脑)";
-    out.emotion = "sad";
-    return out;
-  }
-  http.addHeader("Content-Type", "application/json");
-  if (std::strlen(PET_TOKEN) > 0) http.addHeader("x-pet-token", PET_TOKEN);
-  http.setTimeout(30000);
-
-  JsonDocument req;
-  req["petId"] = PET_ID;
-  req["message"] = message;
-  std::string body;
-  serializeJson(req, body);
-
-  int code = http.POST((uint8_t*)body.data(), body.size());
-  if (code == 200) {
-    JsonDocument res;
-    DeserializationError err = deserializeJson(res, http.getStream());
-    if (!err) {
-      out.ok = true;
-      const char* reply = res["reply"] | "……";
-      const char* emotion = res["emotion"] | "neutral";
-      const char* name = res["name"] | "";
-      out.reply = reply;
-      out.emotion = emotion;
-      out.name = name;
-      float iv = res["stats"]["intimacy"] | -1.0f; out.intimacy = iv < 0 ? -1 : (int)(iv + 0.5f);
-    } else {
-      out.reply = "(没听懂大脑的话)";
-      out.emotion = "sleepy";
+  // 失败重试: -1(HTTP错误)常因语音识别后内存未释放/连接瞬断,延迟重试一次
+  for (int attempt = 0; attempt < 2; attempt++) {
+    PetReply out;
+    if (!ensureWiFi()) {
+      out.reply = "(网络似乎溜走了,正在重连…)"; out.emotion = "sad"; return out;
     }
-  } else {
+    WiFiClient client; // 本地后端走纯 HTTP,省内存(无 PSRAM,别碰 TLS)
+    HTTPClient http;
+    if (!http.begin(client, BACKEND_URL)) {
+      out.reply = "(连不上大脑)"; out.emotion = "sad"; return out;
+    }
+    http.addHeader("Content-Type", "application/json");
+    if (std::strlen(PET_TOKEN) > 0) http.addHeader("x-pet-token", PET_TOKEN);
+    http.setTimeout(30000);
+    JsonDocument req;
+    req["petId"] = PET_ID;
+    req["message"] = message;
+    std::string body; serializeJson(req, body);
+    int code = http.POST((uint8_t*)body.data(), body.size());
+    if (code == 200) {
+      JsonDocument res;
+      DeserializationError err = deserializeJson(res, http.getStream());
+      if (!err) {
+        out.ok = true;
+        const char* reply = res["reply"] | "……";
+        const char* emotion = res["emotion"] | "neutral";
+        const char* name = res["name"] | "";
+        out.reply = reply; out.emotion = emotion; out.name = name;
+        float iv = res["stats"]["intimacy"] | -1.0f; out.intimacy = iv < 0 ? -1 : (int)(iv + 0.5f);
+      } else {
+        out.reply = "(没听懂大脑的话)"; out.emotion = "sleepy";
+      }
+      http.end();
+      return out;
+    }
+    http.end();
+    if (code == -1 && attempt == 0) { delay(500); continue; }  // 语音后内存未释放,延迟重试
     out.reply = std::string("(大脑出错 ") + std::to_string(code) + ")";
     out.emotion = "sad";
+    return out;
   }
-  http.end(); // 每次都收尾,释放 socket/堆
-  return out;
+  PetReply out; out.reply = "(大脑出错 -1)"; out.emotion = "sad"; return out;
 }
 
 // 中英互译:调后端 /translate,返回翻译结果(成功时 ok=true,translation 为译文)
