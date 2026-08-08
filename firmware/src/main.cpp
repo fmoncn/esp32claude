@@ -16,6 +16,7 @@
 #include "scenes.h"
 #include "weather.h"
 #include "dell_hub.h"
+#include "stt.h"
 
 // TLS + WebSocket 握手很吃栈;加大 loop 任务栈
 SET_LOOP_TASK_STACK_SIZE(32 * 1024);
@@ -306,6 +307,19 @@ static bool bootBackToLauncher() {
 
 static void handleKeyboard() {
   if (millis() < kbdIgnoreUntil) return;
+  // Opt 键优先检测(修饰键可能不触发 isChange/isPressed; 用 keysState 的 opt)
+  {
+    auto os = M5Cardputer.Keyboard.keysState();
+    if (os.opt) {
+      if (STT::state() == STT::STT_IDLE) {
+        STT::start();
+        setReply("请说话…再按Opt结束");
+      } else if (STT::state() == STT::STT_LISTEN) {
+        STT::stopAndRecognize();
+      }
+      return;
+    }
+  }
   if (!(M5Cardputer.Keyboard.isChange() && M5Cardputer.Keyboard.isPressed())) return;
   auto st = M5Cardputer.Keyboard.keysState();
   // 思考/说话中不收其他键
@@ -467,6 +481,20 @@ void loop() {
   } else {
     transientAction.clear();
     if (input.empty()) roamStep(now, curHour()); else player.setAction("idle");
+  }
+
+  // 语音录音状态机: 录音中每帧驱动; 录音完成后识别并提交对话
+  STT::update();
+  if (STT::state() == STT::STT_PROCESS) {
+    setReply("识别中…");
+    std::string text = STT::recognize();
+    STT::reset();
+    if (!text.empty()) {
+      setReply("你说：" + text);
+      submitJob(text);  // 提交给 LLM 对话
+    } else {
+      setReply("没听清,请再试");
+    }
   }
 
   player.update(now);
