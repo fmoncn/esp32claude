@@ -125,7 +125,7 @@ inline std::string recognize() {
   size_t total = 44 + pcmBytes;
   c.printf("POST /speech/recognition/conversation/cognitiveservices/v1?language=zh-CN HTTP/1.1\r\n");
   c.printf("Host: westus3.stt.speech.microsoft.com\r\n");
-  c.printf("Ocp-Apim-Subscription-Key: YOUR_AZURE_KEY\r\n");
+  c.printf("Ocp-Apim-Subscription-Key: %s\r\n", AZURE_STT_KEY);
   c.println("Content-Type: audio/wav");
   c.println("Accept: application/json");
   c.println("Connection: close");

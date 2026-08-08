@@ -6,7 +6,7 @@
 #include <string>
 
 // Dell Hub 信息卡片 (切换场景联动显示)
-// 数据源: Dell Hub (LAN_IP:4000) 的 JSON API, 局域网无鉴权, 设备直接拉取
+// 数据源: Dell Hub (DELL_HOST:4000) 的 JSON API, 局域网无鉴权, 设备直接拉取
 //   行情    /api/indices        标普500/纳指100/上证/恒生
 //   Dell系统 /api/sysinfo        CPU/内存/磁盘/运行天数
 //   VPS     /api/sysinfo/vps     CPU/磁盘/内存 + Claude额度
@@ -32,7 +32,7 @@ struct Card {
   bool has = false;
 };
 
-static const char* DELL_HUB = "http://LAN_IP:4000";
+static const char* DELL_HUB = "http://" DELL_HOST ":4000";
 
 inline Card& cur() { static Card c; return c; }
 inline CardType& cardOfScene() { static CardType t = CARD_QUOTE; return t; }
@@ -168,7 +168,7 @@ inline bool fetch(int sceneIdx) {
       //         今日盈亏=Σ(amount×change_pct)
       if (WiFi.status() != WL_CONNECTED) { snprintf(c.line1, sizeof(c.line1), "持仓获取中…"); return false; }
       WiFiClient client; HTTPClient http;
-      if (!http.begin(client, "http://LAN_IP:4004/api/data")) { snprintf(c.line1, sizeof(c.line1), "持仓获取中…"); return false; }
+      if (!http.begin(client, "http://" DELL_HOST ":4004/api/data")) { snprintf(c.line1, sizeof(c.line1), "持仓获取中…"); return false; }
       http.setTimeout(6000);
       int code = http.GET();
       if (code != 200) { http.end(); snprintf(c.line1, sizeof(c.line1), "持仓获取中…"); return false; }
@@ -195,7 +195,7 @@ inline bool fetch(int sceneIdx) {
       // ETF收益: 第1行=实盘收益%, 第2行=YTD%
       if (WiFi.status() != WL_CONNECTED) { snprintf(c.line1, sizeof(c.line1), "收益获取中…"); return false; }
       WiFiClient client; HTTPClient http;
-      if (!http.begin(client, "http://LAN_IP:4004/api/data")) { snprintf(c.line1, sizeof(c.line1), "收益获取中…"); return false; }
+      if (!http.begin(client, "http://" DELL_HOST ":4004/api/data")) { snprintf(c.line1, sizeof(c.line1), "收益获取中…"); return false; }
       http.setTimeout(6000);
       int code = http.GET();
       if (code != 200) { http.end(); snprintf(c.line1, sizeof(c.line1), "收益获取中…"); return false; }
@@ -215,7 +215,7 @@ inline bool fetch(int sceneIdx) {
       // ETF操作: 无补仓信号→今日无需操作; 有信号→显示补仓建议
       if (WiFi.status() != WL_CONNECTED) { snprintf(c.line1, sizeof(c.line1), "操作获取中…"); return false; }
       WiFiClient client; HTTPClient http;
-      if (!http.begin(client, "http://LAN_IP:4004/api/data")) { snprintf(c.line1, sizeof(c.line1), "操作获取中…"); return false; }
+      if (!http.begin(client, "http://" DELL_HOST ":4004/api/data")) { snprintf(c.line1, sizeof(c.line1), "操作获取中…"); return false; }
       http.setTimeout(6000);
       int code = http.GET();
       if (code != 200) { http.end(); snprintf(c.line1, sizeof(c.line1), "操作获取中…"); return false; }
@@ -248,7 +248,7 @@ inline bool fetch(int sceneIdx) {
 inline bool fetchProactive(char* msg, size_t n) {
   if (WiFi.status() != WL_CONNECTED) return false;
   WiFiClient client; HTTPClient http;
-  if (!http.begin(client, "http://LAN_IP:8787/proactive/girl")) return false;
+  if (!http.begin(client, "http://" DELL_HOST ":8787/proactive/girl")) return false;
   http.setTimeout(8000);
   int code = http.GET();
   if (code != 200) { http.end(); return false; }
