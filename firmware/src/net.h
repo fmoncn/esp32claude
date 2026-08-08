@@ -75,23 +75,32 @@ inline bool wifiConnect(uint32_t timeoutMs = 15000) {
   const char* ssids[] = { WIFI_SSID, WIFI2_SSID };
   const char* pwds[] = { WIFI_PASSWORD, WIFI2_PASSWORD };
   for (int k = 0; k < 2; k++) {
-    WiFi.begin(ssids[k], pwds[k]);
+    // 先扫描, 选信号最强的匹配 BSSID(mesh 多节点时固定连最强, 避免连到弱节点)
+    int n = WiFi.scanNetworks();
+    String bestBssid = ""; int bestRssi = -999;
+    for (int i = 0; i < n; i++) {
+      if (String(ssids[k]).equals(WiFi.SSID(i))) {  // 匹配 SSID
+        int r = WiFi.RSSI(i);
+        if (r > bestRssi) { bestRssi = r; bestBssid = WiFi.BSSIDstr(i); }
+      }
+    }
+    if (bestBssid.length() > 0) {
+      // 绑最强节点 BSSID 连接
+      uint8_t bssid[6]; sscanf(bestBssid.c_str(), "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx",
+        &bssid[0], &bssid[1], &bssid[2], &bssid[3], &bssid[4], &bssid[5]);
+      WiFi.begin(ssids[k], pwds[k], 0, bssid, true);
+    } else {
+      WiFi.begin(ssids[k], pwds[k]);
+    }
     uint32_t t0 = millis();
     while (WiFi.status() != WL_CONNECTED && millis() - t0 < timeoutMs / 2) delay(200);
     if (WiFi.status() == WL_CONNECTED) {
-      // 打印实际连接的 AP 详情(mesh 排查)
       Serial.printf("[WIFI] 已连接 %s 信号=%d dBm BSSID=%s ch=%d\n",
         WiFi.SSID().c_str(), WiFi.RSSI(), WiFi.BSSIDstr().c_str(), WiFi.channel());
       return true;
     }
     WiFi.disconnect();
   }
-  // 两个都失败: 扫描打印附近网络(含 BSSID, 排查 mesh 多 AP)
-  int n = WiFi.scanNetworks();
-  Serial.printf("[WIFI] 连接失败, 附近 %d 个网络:\n", n);
-  for (int i = 0; i < n && i < 15; i++)
-    Serial.printf("  %s (%d dBm) BSSID=%s ch=%d\n", WiFi.SSID(i).c_str(), WiFi.RSSI(i),
-                  WiFi.BSSIDstr(i).c_str(), WiFi.channel(i));
   return false;
 }
 
@@ -106,7 +115,22 @@ inline bool ensureWiFi() {
   const char* ssids[] = { WIFI_SSID, WIFI2_SSID };
   const char* pwds[] = { WIFI_PASSWORD, WIFI2_PASSWORD };
   for (int k = 0; k < 2; k++) {
-    WiFi.begin(ssids[k], pwds[k]);
+    // 扫描选信号最强的匹配 BSSID(避免漫游到弱节点)
+    int n = WiFi.scanNetworks();
+    String bestBssid = ""; int bestRssi = -999;
+    for (int i = 0; i < n; i++) {
+      if (String(ssids[k]).equals(WiFi.SSID(i))) {
+        int r = WiFi.RSSI(i);
+        if (r > bestRssi) { bestRssi = r; bestBssid = WiFi.BSSIDstr(i); }
+      }
+    }
+    if (bestBssid.length() > 0) {
+      uint8_t bssid[6]; sscanf(bestBssid.c_str(), "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx",
+        &bssid[0], &bssid[1], &bssid[2], &bssid[3], &bssid[4], &bssid[5]);
+      WiFi.begin(ssids[k], pwds[k], 0, bssid, true);
+    } else {
+      WiFi.begin(ssids[k], pwds[k]);
+    }
     uint32_t start = millis();
     while (WiFi.status() != WL_CONNECTED && millis() - start < 2000) delay(50);
     if (WiFi.status() == WL_CONNECTED) return true;
