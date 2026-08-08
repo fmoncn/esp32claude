@@ -198,6 +198,9 @@ void setup() {
   delay(800);  // 等 USB CDC Serial 就绪, 确保诊断输出可见
   auto cfg = M5.config();
   M5Cardputer.begin(cfg, true);
+  // NS4150 D类功放空闲时产生电流声(嗡嗡): 静音消除(参考 M5Claw 避坑)
+  M5Cardputer.Speaker.stop();
+  M5Cardputer.Speaker.setVolume(0);
   M5Cardputer.Display.setRotation(1);
   M5Cardputer.Display.setBrightness(gBrightness);  // 默认亮度 50/255
   gIdleSince = millis();  // 省电关机:开机即开始空闲计时

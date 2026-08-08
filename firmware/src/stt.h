@@ -17,14 +17,14 @@ namespace STT {
 
 constexpr uint32_t SAMPLE_RATE   = 16000;
 constexpr int      CHUNK_SAMPLES = 1600;   // 100ms @ 16kHz
-constexpr uint32_t MAX_SECONDS   = 10;
-constexpr uint32_t MAX_SAMPLES   = SAMPLE_RATE * MAX_SECONDS;
+constexpr uint32_t RECORD_MS     = 5000;   // 固定录音 5 秒
 constexpr uint32_t MIN_SAMPLES   = SAMPLE_RATE / 2;  // 0.5秒最短
 constexpr const char* REC_PATH   = "/rec.pcm";
 
 static int16_t g_chunk[CHUNK_SAMPLES];  // 3.2KB
 static File g_rec;
 static uint32_t g_samples = 0;
+static uint32_t g_recStartMs = 0;
 static bool g_recording = false;
 static bool g_firstRec = false;
 
@@ -35,18 +35,12 @@ inline void stopAndRecognize();  // 前置声明
 
 inline State& state() { return g_state; }
 
-// ES8311 codec 软复位 + 切换 mic/speaker (参考 M5Claw)
+// ES8311 codec 简单切换 mic (先用最简单方式验证固定5秒录音, 避免 Wire 复位死机)
 static void es8311Switch(bool wantMic) {
   M5Cardputer.Speaker.stop();
   M5Cardputer.Speaker.end();
   M5Cardputer.Mic.end();
   delay(20);
-  // Wire 已在 M5Cardputer.begin 初始化
-  Wire.setTimeOut(100);
-  Wire.beginTransmission(0x18); Wire.write(0x00); Wire.write(0x1F);  // Hold Reset
-  Wire.endTransmission(true); delay(5);
-  Wire.beginTransmission(0x18); Wire.write(0x00); Wire.write(0x00);  // Release Reset
-  Wire.endTransmission(true); delay(15);
   if (wantMic) {
     auto cfg = M5Cardputer.Mic.config();
     cfg.sample_rate = SAMPLE_RATE;
@@ -54,13 +48,13 @@ static void es8311Switch(bool wantMic) {
     cfg.noise_filter_level = 64;    // 降噪(解决噪声/电流声)
     cfg.task_priority = 1;
     M5Cardputer.Mic.config(cfg);
-    M5Cardputer.Mic.begin();
+    M5Cardputer.Mic.begin();   // 配好后 begin
   } else {
     M5Cardputer.Speaker.begin();
   }
 }
 
-// 开始录音
+// 开始录音 — 按Opt触发, 固定录5秒后自动STT
 inline void start() {
   if (g_state != STT_IDLE) return;
   es8311Switch(true);   // 复位 codec + 配 Mic + begin
@@ -71,10 +65,11 @@ inline void start() {
   g_samples = 0;
   g_recording = true;
   g_firstRec = false;
+  g_recStartMs = millis();  // 记录开始时间, 固定录5秒
   g_state = STT_LISTEN;
 }
 
-// 驱动录音状态机(主循环每帧调用) — 参考 M5Claw: 等 isRecording 完成才写满块
+// 驱动录音状态机(主循环每帧调用) — 固定录 RECORD_MS 毫秒后自动停止
 inline void update() {
   if (g_state != STT_LISTEN) return;
   static uint32_t lastChunk = 0;
@@ -89,6 +84,12 @@ inline void update() {
     return;
   }
 
+  // 固定录音时长到达 → 自动停止并识别
+  if (now - g_recStartMs >= RECORD_MS) {
+    stopAndRecognize();
+    return;
+  }
+
   // 每 ~95ms 检查; 等 isRecording() 完成(DMA填满)才写 + 重新 record
   if (now - lastChunk >= 95 && !M5Cardputer.Mic.isRecording()) {
     // 写满的一块(1600 samples × 2字节)
@@ -98,11 +99,6 @@ inline void update() {
     memset(g_chunk, 0, sizeof(g_chunk));
     M5Cardputer.Mic.record(g_chunk, CHUNK_SAMPLES, SAMPLE_RATE, false);
     lastChunk = now;
-  }
-
-  // 超时自动结束
-  if (g_samples >= MAX_SAMPLES) {
-    stopAndRecognize();
   }
 }
 
