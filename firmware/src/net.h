@@ -71,7 +71,7 @@ inline bool wifiConnect(uint32_t timeoutMs = 15000) {
   WiFi.mode(WIFI_STA);
   WiFi.setAutoReconnect(true);  // 开启底层自动重连
   WiFi.persistent(true);
-  // 多 WiFi: 主(TP)优先, 失败试热点(ou的iPhone)
+  // 多 WiFi: 主路由器优先, 失败试备用热点
   const char* ssids[] = { WIFI_SSID, WIFI2_SSID };
   const char* pwds[] = { WIFI_PASSWORD, WIFI2_PASSWORD };
   for (int k = 0; k < 2; k++) {
@@ -102,7 +102,7 @@ inline bool ensureWiFi() {
   if (millis() - lastTryMs < 5000) return false;  // 5秒冷却防刷
   lastTryMs = millis();
   WiFi.disconnect();
-  // 主(TP)优先, 失败试热点(ou的iPhone)
+  // 主路由器优先, 失败试备用热点
   const char* ssids[] = { WIFI_SSID, WIFI2_SSID };
   const char* pwds[] = { WIFI_PASSWORD, WIFI2_PASSWORD };
   for (int k = 0; k < 2; k++) {
