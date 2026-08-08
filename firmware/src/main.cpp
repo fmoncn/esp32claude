@@ -318,6 +318,8 @@ static bool bootBackToLauncher() {
 
 static void handleKeyboard() {
   if (millis() < kbdIgnoreUntil) return;
+  // 录音期间(STT_LISTEN)跳过 Opt 检测: 避免与 STT::update 竞争消费 keysState
+  if (STT::state() != STT::STT_IDLE) return;
   // Opt 键优先检测(修饰键可能不触发 isChange/isPressed; 用 keysState 的 opt)
   {
     auto os = M5Cardputer.Keyboard.keysState();
