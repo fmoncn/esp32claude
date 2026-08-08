@@ -16,7 +16,6 @@
 #include "scenes.h"
 #include "weather.h"
 #include "dell_hub.h"
-#include "stt.h"
 
 // TLS + WebSocket 握手很吃栈;加大 loop 任务栈
 SET_LOOP_TASK_STACK_SIZE(32 * 1024);
@@ -307,20 +306,11 @@ static bool bootBackToLauncher() {
 
 static void handleKeyboard() {
   if (millis() < kbdIgnoreUntil) return;
-  if (gPhase != PH_IDLE) return;  // 思考/说话中不收键(也防喇叭噪声触发假按键)
   if (!(M5Cardputer.Keyboard.isChange() && M5Cardputer.Keyboard.isPressed())) return;
-  gIdleSince = millis();  // 按键=有操作,重置省电计时
   auto st = M5Cardputer.Keyboard.keysState();
-  // Opt 键: 开始/结束语音录音(语音输入,STT识别)
-  if (st.opt) {
-    if (STT::state() == STT::STT_IDLE) {
-      STT::start();
-      setReply("请说话…再按Opt结束");
-    } else if (STT::state() == STT::STT_LISTEN) {
-      STT::stopAndRecognize();
-    }
-    return;
-  }
+  // 思考/说话中不收其他键
+  if (gPhase != PH_IDLE) return;
+  gIdleSince = millis();  // 按键=有操作,重置省电计时
   // Ctrl 键: 切换场景(按一下换一个)
   if (st.ctrl) { gAutoScene = false; gSceneIdx = (gSceneIdx + 1) % Scenes::count();
                  setReply(std::string("场景：") + Scenes::name(gSceneIdx)); return; }
@@ -477,20 +467,6 @@ void loop() {
   } else {
     transientAction.clear();
     if (input.empty()) roamStep(now, curHour()); else player.setAction("idle");
-  }
-
-  // 语音识别状态机: 录音中每帧更新; 录音完成后识别并提交对话
-  STT::update();
-  if (STT::state() == STT::STT_PROCESS) {
-    setReply("识别中…");
-    std::string text = STT::recognize();
-    STT::reset();
-    if (!text.empty()) {
-      setReply("你说：" + text);
-      submitJob(text);  // 提交给 LLM 对话
-    } else {
-      setReply("没听清,请再试");
-    }
   }
 
   player.update(now);
