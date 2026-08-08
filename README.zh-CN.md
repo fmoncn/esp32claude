@@ -6,7 +6,7 @@
 
 ---
 
-![克劳德在 10 个昼夜场景里](docs/demo.gif)
+![克劳德在多个昼夜场景里](docs/clawd_scenes.png)
 
 > 把掌上的 Cardputer 变成一只真的有生命感的宠物 —— 它记得你、理解你的情绪、会回应你的触摸、
 > 还会在 10 个场景里过自己的小日子。**零 PSRAM，极致的内存效率。**
@@ -146,6 +146,8 @@ sprites_src/  默认像素宠物源帧
 
 ## 🙏 致谢
 
-LLM: [DeepSeek](https://deepseek.com)（可换任意 OpenAI 兼容端点）· 语音输入: [Azure Speech](https://azure.microsoft.com/products/ai-services/ai-speech/) · 天气: [open-meteo](https://open-meteo.com) · 硬件: [M5Stack Cardputer](https://m5stack.com)
+本项目**改造自 [小豆丁 (xiaodouding)](https://github.com/huaspirit123/xiaodouding) 像素宠物项目**，由 **[@huaspirit123](https://github.com/huaspirit123)** 创作。**衷心感谢原作者**奠定了这个宠物的基础。
+
+同时感谢用到的技术：LLM — [DeepSeek](https://deepseek.com)（可换任意 OpenAI 兼容端点）· 语音输入 — [Azure Speech](https://azure.microsoft.com/products/ai-services/ai-speech/) · 天气 — [open-meteo](https://open-meteo.com) · 硬件 — [M5Stack Cardputer](https://m5stack.com)。
 
 > 与上述公司无关联，请自带 API key。

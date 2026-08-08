@@ -6,7 +6,7 @@
 
 ---
 
-![Clawd across the 10 day/night scenes](docs/demo.gif)
+![Clawd across several of its 10 day/night scenes](docs/clawd_scenes.png)
 
 > Turn your handheld Cardputer into a pet that actually feels alive — it remembers you, understands your mood, reacts to your touch, and lives its own little life across 10 scenes. **Zero-PSRAM, extreme memory efficiency.**
 
@@ -145,6 +145,8 @@ sprites_src/  Source frames for the bundled pixel pet
 
 ## 🙏 Credits
 
-LLM: [DeepSeek](https://deepseek.com) (or any OpenAI-compatible endpoint) · Voice input: [Azure Speech](https://azure.microsoft.com/products/ai-services/ai-speech/) · Weather: [open-meteo](https://open-meteo.com) · Hardware: [M5Stack Cardputer](https://m5stack.com)
+This project is a fork/derivative of the **[小豆丁 (xiaodouding)](https://github.com/huaspirit123/xiaodouding)** pixel pet by **[@huaspirit123](https://github.com/huaspirit123)** — huge thanks to the original author for the foundation this pet is built on.
+
+Also thanks to the projects it leans on: LLM — [DeepSeek](https://deepseek.com) (or any OpenAI-compatible endpoint) · Voice input — [Azure Speech](https://azure.microsoft.com/products/ai-services/ai-speech/) · Weather — [open-meteo](https://open-meteo.com) · Hardware — [M5Stack Cardputer](https://m5stack.com).
 
 > Not affiliated with or endorsed by any of the above. Bring your own API keys.
