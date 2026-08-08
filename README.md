@@ -59,6 +59,11 @@ npm install
 npm start                     # serves on http://0.0.0.0:8787
 ```
 
+The backend listens on `0.0.0.0` with open CORS, so **`PET_TOKEN` in `.env` is not optional** —
+anyone on your LAN can otherwise read your pet's memory or spend your LLM quota. Set it to
+any random string and copy the exact same value into `PET_TOKEN` in `firmware/src/config.h`
+below — the two must match.
+
 ### 2. Sprites
 
 ```bash

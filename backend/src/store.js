@@ -30,3 +30,19 @@ export async function savePet(pet) {
   await rename(tmp, path);
   return pet;
 }
+
+// 同一 petId 的 load→改→save 必须串行, 否则两个并发请求(比如 /chat 正在等
+// LLM 回复时 /proactive 轮询插进来)会互相用旧数据覆盖对方的写入, 丢对话历史。
+// 按 petId 分链: 不同宠物互不阻塞, 同一宠物排队执行。
+const chains = new Map();
+
+export function withPetLock(petId, fn) {
+  const prev = chains.get(petId) || Promise.resolve();
+  const next = prev.then(fn, fn); // 前一个失败也不能卡住后续请求
+  const tail = next.catch(() => {}); // 占位在链上的是这个,不会因 fn 报错而中断链条
+  chains.set(petId, tail);
+  tail.finally(() => {
+    if (chains.get(petId) === tail) chains.delete(petId); // 期间没有新请求排队时才清理,避免 Map 无限增长
+  });
+  return next; // 调用方仍能拿到 fn 的真实结果/异常
+}

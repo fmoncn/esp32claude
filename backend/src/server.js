@@ -1,7 +1,7 @@
 import express from 'express';
 import { config } from './config.js';
 import { loadPet } from './store.js';
-import { describeState } from './pet.js';
+import { describeState, publicStats } from './pet.js';
 import { respondToPet } from './brain.js';
 import { proactiveMessage } from './proactive.js';
 import { translateText } from './llm.js';
@@ -37,15 +37,15 @@ app.use((req, res, next) => {
 app.get('/health', (req, res) => {
   res.json({
     ok: true,
-    model: config.deepseek.model,
-    hasKey: Boolean(config.deepseek.apiKey),
+    model: config.llm.model,
+    hasKey: Boolean(config.llm.apiKey),
   });
 });
 
 app.get('/pet/:id', async (req, res) => {
   const pet = await loadPet(req.params.id);
   if (!pet) return res.status(404).json({ error: 'no such pet' });
-  res.json({ name: pet.name, stats: pet.stats, state: describeState(pet), facts: pet.facts });
+  res.json({ name: pet.name, stats: publicStats(pet), state: describeState(pet), facts: pet.facts });
 });
 
 // 文字对话
@@ -91,6 +91,6 @@ app.post('/translate', async (req, res) => {
 });
 
 app.listen(config.port, '0.0.0.0', () => {
-  const k = config.deepseek.apiKey ? 'set' : 'MISSING';
+  const k = config.llm.apiKey ? 'set' : 'MISSING';
   console.log(`🐣 Cardpet on http://0.0.0.0:${config.port}  (brain: ${k})`);
 });

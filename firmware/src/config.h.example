@@ -3,9 +3,13 @@
 //   cp firmware/src/config.h.example firmware/src/config.h
 // config.h is gitignored — keep your real WiFi password / API keys out of git.
 
-// 1) WiFi (the pet and your backend machine must be on the same LAN)
-#define WIFI_SSID     "YOUR_WIFI_SSID"
-#define WIFI_PASSWORD "YOUR_WIFI_PASSWORD"
+// 1) WiFi (the pet and your backend machine must be on the same LAN).
+//    Backup network: tried if the primary fails. If you don't have one,
+//    just repeat the primary SSID/password here (must not be left empty).
+#define WIFI_SSID      "YOUR_WIFI_SSID"
+#define WIFI_PASSWORD  "YOUR_WIFI_PASSWORD"
+#define WIFI2_SSID     "YOUR_BACKUP_SSID"
+#define WIFI2_PASSWORD "YOUR_BACKUP_PASSWORD"
 
 // 2) Backend "brain" URL = your computer's LAN IP + port (see backend/README.md)
 #define BACKEND_URL   "http://192.168.1.x:8787/chat"
@@ -13,11 +17,17 @@
 // 3) This pet's id. The backend accumulates memory per id; change it to raise a different pet.
 #define PET_ID        "buddy"
 
-// 4) Optional shared token — must match PET_TOKEN in backend/.env (leave empty to disable).
-#define PET_TOKEN     ""
+// 4) Shared token — must match PET_TOKEN in backend/.env. Strongly recommended:
+//    the backend listens on 0.0.0.0, so an empty token means anyone on your LAN
+//    can read your pet's memory (GET /pet/:id) and spend your LLM quota.
+#define PET_TOKEN     "change-me"
 
-// 5) Voice (device talks to DashScope directly). Get a key at https://dashscope.console.aliyun.com
-//    Leave the key empty to disable on-device voice (text chat still works).
-#define DASHSCOPE_API_KEY   "sk-YOUR_DASHSCOPE_KEY"
-#define DASHSCOPE_TTS_MODEL "qwen3-tts-flash"
-#define DASHSCOPE_VOICE     "Ethan"   // Cherry/Chelsie/Serena (female) · Ethan/Dylan (male)
+// 5) Voice input (device talks to Azure Speech directly). Leave the key empty
+//    to disable on-device voice — text chat still works fine without it.
+//    Region is hardcoded to westus3 in firmware/src/stt.h; change both together.
+#define AZURE_STT_KEY  ""
+
+// 6) Optional: LAN "info card" host (stocks/system status shown when cycling
+//    scenes). Leave as-is if you don't have one — cards will just fail to
+//    load; nothing else depends on it.
+#define DELL_HOST      "127.0.0.1"
