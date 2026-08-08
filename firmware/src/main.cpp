@@ -46,9 +46,7 @@ static uint32_t gProNext = 0;             // 下次主动轮询时间(每60s)
 static char gProMsg[80] = {0};            // 主动消息缓冲(省内存:固定80字符)
 static uint32_t gProRingUntil = 0;        // 三连音播报冷却(防反复)
 
-// 推理建议菜单: 克劳德给主人 1/2/3 可选择的下一步建议(固定缓冲省内存)
-static int gSugCount = 0;                 // 建议条数(0=无菜单)
-static char gSug[3][13] = {{0}};          // 3 × 13 字节 = 39B 静态
+// 推理建议菜单: 已移除(回复文字优先, 不再显示1/2/3菜单)
 
 // 思考/说话放到后台核(core 0),主循环(core 1)永不阻塞 → 背景动画一直跑
 enum { PH_IDLE = 0, PH_THINKING = 1 };
@@ -180,10 +178,8 @@ static void render() {
       }
     }
   } else {
-    // 有建议菜单时回复少显示, 给建议留空间(建议每行2条, 3条=2行)
-    int vis = (gSugCount > 0) ? VIS - 2 : VIS;   // 回复让出2行给建议
-    if (vis < 1) vis = 1;
-    for (int i = 0; i < vis; i++) {
+    // 回复始终显示满 VIS 行(不因建议菜单压缩, 长回复靠滚动看完)
+    for (int i = 0; i < VIS; i++) {
       int li = scrollTop + i;
       if (li < 0 || li >= (int)replyLines.size()) break;
       canvas.setTextColor(0xFC4B, 0x08A4);  // 回复全部统一亮橙(名字前缀已在第0行wrapLines拼入)
@@ -191,20 +187,8 @@ static void render() {
       canvas.print(replyLines[li].c_str());
     }
     if (scrollTop > 0) canvas.fillTriangle(232, BAR_Y + 2, 236, BAR_Y + 2, 234, BAR_Y - 2, 0x7BCF);
-    if (scrollTop + vis < (int)replyLines.size())
+    if (scrollTop + VIS < (int)replyLines.size())
       canvas.fillTriangle(232, BAR_Y + 2 * LH - 2, 236, BAR_Y + 2 * LH - 2, 234, BAR_Y + 2 * LH + 2, 0x7BCF);
-    // 推理建议菜单: 屏幕只够3行(BAR_Y起42px)。有建议时回复1行+建议2条各1行。
-    // 3条建议时显示"1.a 2.b"和"3.c"两行。
-    if (gSugCount > 0) {
-      canvas.setTextColor(0x7BCF, 0x08A4);  // 灰色提示
-      // 第一行: 提示 + 第1条建议
-      canvas.setCursor(4, BAR_Y + 1 * LH);
-      canvas.print("下一步:1. "); canvas.print(gSug[0]);
-      // 第二行: 第2条(和第3条)建议
-      canvas.setCursor(4, BAR_Y + 2 * LH);
-      canvas.print("2. "); canvas.print(gSug[1]);
-      if (gSugCount > 2) { canvas.print("  3. "); canvas.print(gSug[2]); }
-    }
   }
 
   // P1 体验改进: THINKING/SPEAKING 状态加可爱的动态视觉反馈(14岁女孩等待时不会觉得卡死)
@@ -333,16 +317,13 @@ static void brainTask(void*) {
         xSemaphoreTake(gMtx, portMAX_DELAY);
         gResReply = ok ? translation : "(翻译失败,请检查网络)";
         gResEmotion = ok ? "neutral" : "sad";
-        gResName = ""; gResSeq++; gSugCount = 0;  // 翻译无建议
+        gResName = ""; gResSeq++;  // 翻译无建议
         xSemaphoreGive(gMtx);
       } else {  // 聊天模式
         PetReply r = askPet(msg);
         if (r.intimacy >= 0) gIntimacy = r.intimacy;
         xSemaphoreTake(gMtx, portMAX_DELAY);
         gResReply = r.reply; gResEmotion = r.emotion; gResName = r.name; gResSeq++;
-        // 存推理建议(固定缓冲, 省内存)
-        gSugCount = r.sugCount;
-        for (int k = 0; k < gSugCount; k++) { strncpy(gSug[k], r.sug[k], 12); gSug[k][12] = 0; }
         xSemaphoreGive(gMtx);
       }
 
@@ -464,17 +445,6 @@ static void handleKeyboard() {
     if (c >= '1' && c <= '9' && pinyinIME.hasCandidates()) {  // 数字→选候选
       const char* picked = pinyinIME.select(c - '0');
       if (picked && picked[0]) input += picked;
-      continue;
-    }
-    // 推理建议菜单: 有建议时按数字 1/2/3 → 选择对应建议发给克劳德
-    if (c >= '1' && c <= '3' && gSugCount > 0 && input.empty() && !gTranslate) {
-      int idx = c - '1';
-      if (idx < gSugCount && gSug[idx][0]) {
-        std::string choice = gSug[idx];
-        gSugCount = 0;                        // 选择后清菜单
-        setReply("你要：" + choice);
-        submitJob(choice);                    // 提交给克劳德执行
-      }
       continue;
     }
     if (c == ' ') {  // 空格→选第1个候选
