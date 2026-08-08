@@ -1,178 +1,167 @@
-# 克劳德 · clawd
+# 克劳德 · Clawd 🦀
 
-**English** · [中文](README.zh-CN.md) · ▶ [**Try it live in your browser**](https://huaspirit123.github.io/xiaodouding/)
+**一只住在 M5Stack Cardputer 里的 AI 像素宠物。会说话、会撒娇、会主动找你聊天、还喜欢被你抚摸。**
 
-**An LLM-powered pixel pet for the M5Stack Cardputer.** It chats with you (with persistent
-memory), talks back with voice, and lives an autonomous little life — roaming a holographic
-"pixel workstation" across 10 day/night scenes, showing the real time, real weather, and WiFi
-signal, and reacting to your messages with moods.
+**English** · [中文](README.zh-CN.md) · ▶ [**在浏览器里试玩**](https://huaspirit123.github.io/xiaodouding/)
 
-[![demo — Pixel Buddy across the 10 scenes](docs/demo.gif)](https://huaspirit123.github.io/xiaodouding/)
-
-> ▶ **[Play with it live, in your browser →](https://huaspirit123.github.io/xiaodouding/)** — the pet roams, real clock & weather, no install. (Chat needs the local backend.)
-
-> The bundled character is **Pixel Buddy**, an original generic mascot. Bring your own art —
-> see [Sprites / bring your own character](#sprites--bring-your-own-character).
+> 把你的掌上 Cardputer 变成一只活生生的电子宠物 —— 它记得你、理解你、会回应你的触摸，
+> 还能在 10 个昼夜场景里自己过日子。**全部跑在无 PSRAM 的 ESP32-S3 上，极省内存。**
 
 ---
 
-## ✨ Features
+## ✨ 它为什么不一样？
 
-- **Real conversation + memory** — talks via an LLM brain (DeepSeek by default; any
-  OpenAI-compatible endpoint works). 3-layer memory: short term + rolling summary + facts
-  about you. Replies come back with an *emotion* that drives the on-screen animation.
-- **Voice** — hold a key to talk (streaming speech-to-text), and the pet speaks its reply
-  (text-to-speech), all on-device via Alibaba DashScope. Push-to-talk up to ~1 minute.
-- **Alive when idle** — the pet walks around, does activities by time-of-day schedule
-  (work / eat / sleep…), and animates continuously on a second CPU core so the UI never
-  freezes while it "thinks" or speaks.
-- **10 scenes, one cohesive style** — "pixel holographic workstation": deep-blue blueprint
-  grid + neon glow + crisp pixel art. Indoor (studio/living room/bedroom) auto-switch by
-  time of day; outdoor (city/desert/grassland/ocean/snow/forest/space) switch manually.
-- **Real info on screen** — live clock & date (NTP), **real weather** (device pulls
-  [open-meteo](https://open-meteo.com), auto-located by IP), WiFi signal bars, bond meter.
-- **Long-text paging**, volume control, voice on/off — all from the Cardputer keyboard.
+**🐾 会摸你 (抚摸交互)**
+内置 **BMI270 加速度计**感知你的动作 —— 轻轻抚摸它，它会眯眼撒娇"喵~最舒服了"；
+抱在怀里摇晃，它会困倦入睡；粗暴晃动，它会委屈地"呜…头好晕"。**不需要任何额外硬件。**
 
-## 🧰 Hardware
+**🗣️ 会说话 (语音)**
+按住 `Opt` 键说话，设备直连 Azure 语音识别你的话；克劳德用温柔的声音回你。
+语音输入经过反复优化 —— **首次实现不爆内存的流式录音**。
 
-- **M5Stack Cardputer (original / StampS3, ESP32-S3FN8)** — 8MB flash, **no PSRAM**.
-- A **microSD card** is optional but recommended (sprites can run from SD; also enables the
-  optional multi-app launcher setup).
-- A computer on the **same LAN** to run the backend "brain".
+**💬 会主动找你 (主动对话)**
+不只会被动回答。克劳德会根据自己的记忆和你的聊天记录，**在你空闲时主动开口**，
+用轻柔的三连音提醒你 —— 像真正的宠物一样想念你。
 
-## 🏗 Architecture
+**🧠 真记忆 + 真人格**
+后端 Node "大脑" 有 3 层记忆（短期 + 滚动摘要 + 关于你的长期事实），
+克劳德会记得你的喜好、计划、心情，用符合它性格的方式回应。
 
-```
- ┌──────────────┐   WiFi/LAN    ┌─────────────────────┐   HTTPS    ┌────────────┐
- │  Cardputer   │  ───────────► │  backend (Node/Express)         │  LLM        │
- │  firmware    │  /chat        │  brain + 3-layer memory ───────► │ (DeepSeek…) │
- │ (C++/PlatformIO)             │  data/<petId>.json  │           └────────────┘
- │              │  ◄─────────── │  reply + emotion    │
- └──────┬───────┘               └─────────────────────┘
-        │  HTTPS (device-direct, voice + weather)
-        ▼
-   DashScope (STT/TTS)   ·   open-meteo (weather)
-```
+**🌍 真实世界数据**
+时钟/日期（NTP）、**实时天气**（open-meteo 自动定位）、WiFi 信号。
+还能显示**你的投资组合行情**（标普/纳指/上证/恒生）、持仓、收益、补仓信号。
 
-- **Why a backend?** Keeps your API keys off the device, gives memory a place to live, and
-  lets you swap the model in one place. The brain is plain OpenAI-style chat — point it at
-  DeepSeek, OpenAI, or a local Ollama by editing `backend/src/config.js`.
-- **Why device-direct voice/weather?** DashScope + open-meteo are reachable from the device's
-  clean WiFi; only the chat brain goes through your computer.
+**🎨 10 个昼夜场景**
+"像素全息工作台"风格 —— 深蓝蓝图网格 + 霓虹辉光。室内场景按作息自动切换，
+室外场景手动切换。克劳德在其中自由漫步、吃饭、睡觉、工作。
 
-## 📁 Repo layout
+**🧵 永不卡顿**
+思考和语音在**第二个 CPU 核心**运行，主循环持续渲染动画 —— 克劳德"思考"时也一直在动。
 
-```
-firmware/      ESP32-S3 firmware (PlatformIO). scenes.h = 10-scene renderer, main.cpp = app.
-backend/       Node/Express "brain": LLM chat + memory + voice proxy.
-sim/           Browser "device twin" + scene previewer (great for tuning visuals fast).
-tools/         gen_sprites.py (make the generic mascot) + pack_sprites.py (→ device format).
-sprites_src/   Source frames for the bundled mascot (regenerate or replace with your own).
-```
+---
 
-## 🚀 Quick start
+## 🧰 硬件
 
-### 1. Backend (the brain)
+- **M5Stack Cardputer / Cardputer ADV**（ESP32-S3FN8，8MB Flash，**无 PSRAM**）
+- 同局域网的一台电脑运行后端"大脑"
+- 可选 microSD（多 app launcher 模式）
+
+---
+
+## 🚀 快速开始
+
+### 1. 后端（大脑）
 
 ```bash
 cd backend
-cp .env.example .env          # fill in DEEPSEEK_API_KEY (and DASHSCOPE_API_KEY for voice)
+cp .env.example .env          # 填 DEEPSEEK_API_KEY / AZURE_SPEECH_KEY
 npm install
-npm start                     # serves on http://0.0.0.0:8787
+npm start                     # http://0.0.0.0:8787
 ```
 
-Find your computer's LAN IP (e.g. `192.168.1.20`) — you'll put it in the firmware config.
-
-### 2. Sprites
-
-The bundled generic mascot is already generated, but to (re)build or customize:
+### 2. 精灵图
 
 ```bash
-pip install pillow
-python tools/gen_sprites.py   # → sprites_src/   (the original Pixel Buddy)
-python tools/pack_sprites.py  # → firmware/data/sprites/*.bin + firmware/src/sprites_meta.h
+python tools/gen_sprites.py   # 生成默认像素宠物
+python tools/pack_sprites.py  # → 设备格式
 ```
 
-### 3. Firmware
+### 3. 固件
 
 ```bash
 cd firmware
-cp src/config.h.example src/config.h     # set WiFi, BACKEND_URL (your LAN IP), DashScope key
-pio run -t upload                        # build + flash (PlatformIO)
-pio run -t uploadfs                      # upload sprites to the device's LittleFS
+cp src/config.h.example src/config.h   # 填 WiFi、后端 IP、Azure key
+pio run -t upload            # 编译 + 烧录
+pio run -t uploadfs          # 上传精灵到 LittleFS
 ```
 
-Open the Cardputer: type and press **Enter** to chat. (See controls below.)
+---
 
-## 🎮 Controls (Cardputer keyboard)
+## 🎮 操作
 
-| Key | Action |
-|-----|--------|
-| type + `Enter` | send a chat message |
-| hold `Opt` | push-to-talk: speak, release to send |
-| `Fn` + `,` / `.` | page long replies up / down |
-| `Fn` + `[` / `]` | previous / next scene |
-| `Fn` + `\` | scenes follow the daily schedule again |
-| `Fn` + `/` | cycle volume |
-| `Fn` + `V` | voice replies on / off |
-| `Fn` + `1`…`0` | trigger action animations |
+| 操作 | 按键 |
+|------|------|
+| 打字聊天 | 输入 + `Enter` |
+| **语音输入** | 按住 `Opt` 说话，松开发送 |
+| **抚摸** | 轻轻摸/摇晃设备（无需按键）|
+| 切场景 | `Fn` + `[` / `]` |
+| 场景跟作息 | `Fn` + `\` |
+| 语音开关 | `Fn` + `V` |
+| 音量 | `Fn` + `/` |
+| 亮度 | `-` / `=` |
+| 中英输入 | `Shift`（Aa）|
+| 翻译模式 | `Alt` |
+| 播放表情 | `Fn` + `1`…`0` |
 
-## 🎨 Sprites / bring your own character
+---
 
-The device plays per-action sprite sheets (64×72 frames). The bundled **Pixel Buddy** is
-original procedural art. To use your own character:
+## 🏗 架构
 
-1. Put your frames under `sprites_src/frames/<action>/<action>_<i>.png` (RGBA, 64×72) plus a
-   `sprites_src/metadata.json` (see the generated one for the format & the 34 action names).
-   Tip: AI-generate a sprite sheet, or draw your own — keep the action names the same.
-2. `python tools/pack_sprites.py` → repacks to the device format.
-3. `pio run -t uploadfs` (or copy `firmware/data/sprites/` to the SD card root as `/sprites/`).
+```
+┌──────────────┐  WiFi/LAN   ┌────────────────────┐   HTTPS   ┌────────────┐
+│  Cardputer    │  ────────►  │  backend (Node)    │ ────────► │  LLM       │
+│  firmware     │  /chat     │  brain + 3层记忆   │           │ (DeepSeek) │
+│ (C++/PIO)     │  ◄────────  │  data/<pet>.json   │           └────────────┘
+└──────┬───────┘             └────────────────────┘
+       │ 设备直连: Azure STT/TTS · open-meteo · Dell Hub(行情)
+       ▼
+  BMI270 加速度计(抚摸交互) · I2C 独立于语音 I2S
+```
 
-> ⚠️ Please don't commit copyrighted/trademarked characters to this repo. Keep those local.
+- **为什么用后端？** API key 不暴露在设备上，记忆有地方存，换模型只改一处。
+- **为什么设备直连？** 语音（Azure）和天气（open-meteo）从设备干净 WiFi 直达；
+  只有对话大脑走电脑。
 
-## 🔊 Voice & 🌤 Weather
+---
 
-Voice (STT + TTS) and weather are optional and run device-direct. Leave `DASHSCOPE_API_KEY`
-empty to disable voice (text chat still works). Weather auto-locates by IP via open-meteo
-(no key); edit the coordinates in `firmware/src/weather.h` to pin a city.
+## 🛠 技术亮点（省内存的硬功夫）
 
-## 🧩 Optional: run alongside other apps (launcher)
+- **无 PSRAM（~327KB RAM）**：单全屏 canvas + 精灵按动作流式加载；TLS 很吃栈，
+  loop 任务栈加大 + 思考/语音放第二核心。
+- **语音输入不爆内存**：双缓冲乒乓录音 + `isRecording()` 等填满 + 流式写 LittleFS，
+  只占 ~8KB 静态内存 —— 首次在无 PSRAM 上稳定实现语音输入。
+- **抚摸交互零内存**：BMI270 加速度计手势检测（抚摸/摇晃/粗暴），只用 ~96B 静态缓冲。
+- **主动对话零内存**：智能逻辑全在后端，固件只做已有 HTTP 轮询 + 内置 `tone()` 蜂鸣。
+- **ES8311 codec** 用 GPIO 复位（禁用 I2C Wire 复位，避免死机），NS4150 功放静音消电流声。
+- **`sim/` 浏览器孪生**：先在浏览器调好视觉，再移植到 `scenes.h`。
 
-Want a "phone-like" setup where the pet is one of several apps you can switch between? Flash
-[bmorcelli/Launcher](https://github.com/bmorcelli/Launcher) (use its web flasher, pick
-*M5Stack → Cardputer*), copy `firmware/.pio/build/cardputer/firmware.bin` to the SD card, and
-install it from the launcher's SD menu. The pet's `Fn+Q` returns to the launcher. Sprites must
-live on the SD card in this mode (the firmware auto-migrates them on first boot).
+---
 
-## 🛠 Tech notes (the hard-won bits)
+## 🎨 自定义精灵
 
-- **No PSRAM** (~300KB heap): one full-screen canvas, sprite frames streamed per-action; TLS
-  is heavy so the loop task stack is enlarged and the chat/voice run on the **second core**.
-- **Half-duplex audio**: mic and speaker share a pin — the firmware switches between them and
-  resets the relevant GPIOs around each switch.
-- **Streaming STT** over WebSocket (paraformer-realtime) so a minute of speech fits without
-  buffering the whole clip.
-- The `sim/` browser twin renders the same scenes — tune visuals there (fast), then port to
-  `scenes.h`.
+精灵是每动作 64×72 帧的 sprite sheet。默认克劳德是原创程序生成艺术。
+想换自己的角色：
 
-## 💬 Community
+1. 帧放 `sprites_src/frames/<action>/<action>_<i>.png`（RGBA, 64×72）+ `metadata.json`
+2. `python tools/pack_sprites.py` 重新打包
+3. `pio run -t uploadfs`
 
-- **M5Stack forum** show & tell: https://community.m5stack.com/topic/8246/
-- Questions & ideas: [GitHub Discussions](https://github.com/huaspirit123/xiaodouding/discussions) or [issues](https://github.com/huaspirit123/xiaodouding/issues)
-- Built your own pet with it? Share it — PRs and "here's mine" posts very welcome.
+> ⚠️ 别提交有版权的角色。自制角色请留在本地。
 
-## 🤝 Contributing
+---
 
-PRs welcome — see [CONTRIBUTING.md](CONTRIBUTING.md). Good first issues: more scenes, nicer
-mascot art, additional LLM/voice backends, English/i18n of the on-device strings.
+## 📁 仓库结构
 
-## 📜 License
+```
+firmware/     ESP32-S3 固件(PlatformIO)。scenes.h 场景渲染, main.cpp 主程序, stt.h 语音,
+              pet_touch.h 抚摸交互
+backend/      Node/Express "大脑": LLM 对话 + 3层记忆 + /tts + /proactive
+sim/          浏览器设备孪生 + 场景预览
+tools/        gen_sprites.py(生成像素宠物) + pack_sprites.py(转设备格式)
+sprites_src/  默认像素宠物源帧
+```
 
-[Apache-2.0](LICENSE). The bundled **Pixel Buddy** mascot art is original and also Apache-2.0.
+---
 
-## 🙏 Credits & notes
+## 📜 许可证
 
-- LLM: [DeepSeek](https://deepseek.com) (default, swappable). Voice: Alibaba
-  [DashScope](https://dashscope.console.aliyun.com) (Qwen ASR/TTS). Weather:
-  [open-meteo](https://open-meteo.com). Hardware: [M5Stack Cardputer](https://m5stack.com).
-- Not affiliated with or endorsed by any of the above. Bring your own API keys.
+[Apache-2.0](LICENSE)。
+
+---
+
+## 🙏 致谢
+
+LLM: [DeepSeek](https://deepseek.com)（可换任意 OpenAI 兼容端点）· 语音: [Azure Speech](https://azure.microsoft.com/products/ai-services/ai-speech/) ·
+天气: [open-meteo](https://open-meteo.com) · 硬件: [M5Stack Cardputer](https://m5stack.com)
+
+> 与上述公司无关联，请自带 API key。
