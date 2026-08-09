@@ -84,6 +84,18 @@ static void fmtReset(long sec, char* buf, int n) {
   }
 }
 
+// 格式化重置剩余时间(小数单位, 四舍五入1位): 按窗口期自动用 小时/天
+// 例: 11866s→3.3小时, 487066s→5.6天(实时数据, 随时间递减)
+static void fmtResetDur(long sec, bool asDays, char* buf, int n) {
+  if (asDays) {
+    double days = (double)sec / 86400.0;
+    snprintf(buf, n, "%.1f天", days);
+  } else {
+    double hours = (double)sec / 3600.0;
+    snprintf(buf, n, "%.1f时", hours);
+  }
+}
+
 // 拉取并填充当前场景对应的卡片数据
 inline bool fetch(int sceneIdx) {
   cardOfScene() = cardForScene(sceneIdx);
@@ -147,18 +159,18 @@ inline bool fetch(int sceneIdx) {
       break;
     }
     case CARD_QUOTA: {
-      // Claude额度: line1=Claude 89%(4h46m)  line2=99%(6d21h)
+      // Claude额度: line1=5小时｜用量%｜重置(小时)  line2=7天｜用量%｜重置(天)
       JsonDocument d;
       if (!getJson("/api/sysinfo/vps", d)) { snprintf(c.line1, sizeof(c.line1), "额度获取中…"); return false; }
       int p5 = d["claude"]["5h"]["pct"].as<int>(); if (p5 < 0) p5 = 0;
       int p7 = d["claude"]["7d"]["pct"].as<int>(); if (p7 < 0) p7 = 0;
       long r5 = d["claude"]["5h"]["reset_in_s"].as<long>();
       long r7 = d["claude"]["7d"]["reset_in_s"].as<long>();
-      char r5s[12], r7s[12];
-      fmtReset(r5, r5s, sizeof(r5s));
-      fmtReset(r7, r7s, sizeof(r7s));
-      snprintf(c.line1, sizeof(c.line1), "Claude %d%%(%s)", p5, r5s);
-      snprintf(c.line2, sizeof(c.line2), "%d%%(%s)", p7, r7s);
+      char r5s[16], r7s[16];
+      fmtResetDur(r5, false, r5s, sizeof(r5s));   // 5h窗口→小时
+      fmtResetDur(r7, true,  r7s, sizeof(r7s));   // 7d窗口→天
+      snprintf(c.line1, sizeof(c.line1), "5时｜%d%%｜%s", p5, r5s);
+      snprintf(c.line2, sizeof(c.line2), "7天｜%d%%｜%s", p7, r7s);
       c.has = true;
       break;
     }
@@ -185,8 +197,8 @@ inline bool fetch(int sceneIdx) {
         double chg = h["change_pct"].as<double>();
         dayPnl += amt * chg / 100.0;
       }
-      snprintf(c.line1, sizeof(c.line1), "总持仓 %.2f万", total / 10000.0);
-      snprintf(c.line2, sizeof(c.line2), "盈亏 %+.0f元", dayPnl);
+      snprintf(c.line1, sizeof(c.line1), "Total %.0f", total);
+      snprintf(c.line2, sizeof(c.line2), "P&L %+.0f", dayPnl);
       c.trend = (dayPnl > 0.5) ? 1 : (dayPnl < -0.5) ? -1 : 0;  // 红涨绿跌
       c.has = true;
       break;

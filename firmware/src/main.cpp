@@ -18,6 +18,7 @@
 #include "dell_hub.h"
 #include "stt.h"
 #include "pet_touch.h"
+#include "tunes.h"
 
 // TLS + WebSocket 握手很吃栈;加大 loop 任务栈
 SET_LOOP_TASK_STACK_SIZE(32 * 1024);
@@ -45,6 +46,7 @@ static uint32_t kbdIgnoreUntil = 0;
 static uint32_t gProNext = 0;             // 下次主动轮询时间(每60s)
 static char gProMsg[80] = {0};            // 主动消息缓冲(省内存:固定80字符)
 static uint32_t gProRingUntil = 0;        // 三连音播报冷却(防反复)
+static bool gSleeping = false;            // 睡眠状态标志(困倦/唤醒音效切换检测)
 
 // 推理建议菜单: 已移除(回复文字优先, 不再显示1/2/3菜单)
 
@@ -117,7 +119,7 @@ static void render() {
 
   canvas.setFont(&fonts::efontCN_14);
   // 右上角 WiFi 信号(4 格随强度);未连显示红叉;用缓存值避免频繁读异常
-  { const int wx = 205, wy = 10; bool up = WiFi.status() == WL_CONNECTED; long rs = up ? gWifiRssi : 0;
+  { const int wx = 161, wy = 10; bool up = WiFi.status() == WL_CONNECTED; long rs = up ? gWifiRssi : 0;
     int bars = !up ? 0 : (rs >= -55 ? 4 : rs >= -65 ? 3 : rs >= -73 ? 2 : 1);
     uint16_t ac = !up ? 0x7BEF : (bars >= 3 ? 0x07E0 : bars == 2 ? 0xFFE0 : 0xFD20);
     for (int i = 0; i < 4; i++) { int bh = 2 + i * 2;
@@ -125,7 +127,7 @@ static void render() {
     if (!up) { canvas.drawLine(wx, 2, wx + 10, 10, 0xF800); canvas.drawLine(wx + 10, 2, wx, 10, 0xF800); } }
 
   // 右上角电池电量图标(百分比填充,右对齐,稳定显示不闪)
-  { const int bx = 220, by = 2, bw = 15, bh = 9;  // 电池右对齐(最右侧,凸点到 237)
+  { const int bx = 178, by = 2, bw = 15, bh = 9;  // 电池(时间左侧)
     int level = M5.Power.getBatteryLevel();
     if (level < 0) level = 0; if (level > 100) level = 100;
     uint16_t col = level <= 20 ? 0xF800 : 0x07E0;  // 低电量红,正常绿
@@ -138,6 +140,18 @@ static void render() {
       if (i < filled) canvas.fillRect(bx + 2 + i * 3, by + 2, 2, bh - 4, col);
       else canvas.fillRect(bx + 2 + i * 3, by + 2, 2, bh - 4, 0x39C7);  // 空格
     }
+  }
+
+  // 右上角时间(最右,右对齐): WiFi + 电池 + 时间(HH:MM)
+  { struct tm tmv; char hhmm[6];
+    if (getLocalTime(&tmv, 0)) snprintf(hhmm, sizeof(hhmm), "%02d:%02d", tmv.tm_hour, tmv.tm_min);
+    else strcpy(hhmm, "--:--");
+    canvas.setFont(&fonts::efontCN_14);
+    canvas.setTextColor(0x07E0, 0x0000);  // 亮绿,与WiFi信号/电池图标一致;透明背景
+    // 右对齐到 x=236; y=1 使文字顶部贴屏幕顶(efontCN_14 的 y 即文字顶部)
+    int tw = canvas.textWidth(hhmm);
+    canvas.setCursor(236 - tw, 1);
+    canvas.print(hhmm);
   }
 
   // 对话框(背景=地面延伸色,与场景一体化;文字=Claude 橙色)
@@ -266,12 +280,7 @@ static void doPTT() {
 
 // 轻柔爱的三连音(上行琶音 C5→E5→G5, 温暖感), 用内置 tone 零运行期内存
 static void ringProactive() {
-  M5Cardputer.Speaker.setVolume(60);   // 轻柔音量
-  M5Cardputer.Speaker.tone(523, 150); delay(170);  // C5
-  M5Cardputer.Speaker.tone(659, 150); delay(170);  // E5
-  M5Cardputer.Speaker.tone(784, 200); delay(220);  // G5
-  M5Cardputer.Speaker.stop();
-  M5Cardputer.Speaker.setVolume(0);    // 播完静音(消 NS4150 电流声)
+  Tunes::greet();
 }
 
 // 抚摸交互反馈: 手势 → 动画 + 音效(内置tone零内存) + 固定互动模板(零内存)
@@ -279,20 +288,17 @@ static bool handleTouch(PetTouch::Gesture g) {
   // 随机模板: 用手势类型挑一句(固定字符串常量, 零堆分配)
   int r = (int)(esp_random() % 3);   // 0/1/2 随机
   switch (g) {
-    case PetTouch::PET: {  // 抚摸(上下/左右3次): 眯眼开心 + 满足音 + 撒娇
-      M5Cardputer.Speaker.setVolume(20);   // 轻柔音量
+    case PetTouch::PET: {  // 抚摸(上下/左右3次): 眯眼开心 + 高八度三连音 + 撒娇
       player.setAction("happy");
       setTransient("happy", 3000);
-      M5Cardputer.Speaker.tone(659, 120); delay(130);   // E5 满足
+      Tunes::pet();   // 轻柔高八度上行三连音(愉悦)
       static const char* t[] = { "喵~最舒服了", "好喜欢被摸", "再摸摸嘛" };
       setReply(t[r]);  break;
     }
     case PetTouch::ABUSE: {  // 粗暴(剧烈运动3次): 头晕/生气 + 警示音(稍大) + 委屈
-      M5Cardputer.Speaker.setVolume(30);   // 警示音稍大一点(30/255)
       player.setAction("surprised");
       setTransient("surprised", 4000);
-      M5Cardputer.Speaker.tone(196, 180); delay(200);   // G3 低音
-      M5Cardputer.Speaker.tone(147, 250); delay(280);   // D3 更低
+      Tunes::abuse();  // 低音警示
       static const char* t[] = { "呜…头好晕", "别晃我啦", "我有点疼…" };
       setReply(t[r]);  break;
     }
@@ -486,7 +492,13 @@ static void roamStep(uint32_t now, int hour) {
     }
   } else {
     if (now > roamUntil) {
-      if (hour < 7 || hour >= 23) { player.setAction("sleeping"); roamUntil = now + 6000; return; }
+      if (hour < 7 || hour >= 23) {
+        // 进入睡眠: 首次播轻柔困倦三连音
+        if (!gSleeping) { gSleeping = true; Tunes::sleep(); }
+        player.setAction("sleeping"); roamUntil = now + 6000; return;
+      }
+      // 醒来: 从睡眠恢复时播唤醒三连音
+      if (gSleeping) { gSleeping = false; Tunes::wake(); }
       roamMode = 0; targetX = 44 + random(152); if (random(10) < 3) targetX = roamX;
     }
   }
@@ -521,6 +533,10 @@ void loop() {
     emotion = em; if (!nm.empty()) petName = nm;
     setReply(rp);
     setTransient(emotionToAction(emotion), 6000);  // 说完后情绪再停留一会儿
+    if (!gTranslate) {
+      if (emotion == "in_love") Tunes::coquet();   // 示爱→撒娇上扬三连音
+      else Tunes::reply();                          // 其他回复→轻柔下行三连音
+    }
   }
 
   // 长回复自动滚动:逐行滚动,慢速;滚到底回到顶部循环,直到用户手动滚动/新输入
@@ -550,6 +566,7 @@ void loop() {
     STT::reset();
     if (!text.empty()) {
       setReply("你说：" + text);
+      Tunes::notice();   // 收到语音→轻柔跳跃三连音(注意反馈)
       submitJob(text);  // 提交给 LLM 对话
     } else {
       setReply("没听清,请再试");
