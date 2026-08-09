@@ -492,13 +492,13 @@ static void roamStep(uint32_t now, int hour) {
   }
 }
 
-// 省电调暗:10分钟无操作 → 屏幕亮度降为0(不关机,不深睡);按 -= 亮度键恢复
+// 省电调暗:60分钟无操作 → 屏幕亮度降为0(不关机,不深睡);按 -= 亮度键恢复
 static void checkIdleDim() {
   uint32_t now = millis();
-  const uint32_t IDLE_MS = 600000UL;       // 10 分钟
+  const uint32_t IDLE_MS = 3600000UL;      // 60 分钟
   if (now - gIdleSince < IDLE_MS) return;  // 仍在活跃期内
   if (gDimmed) return;                      // 已调暗,等待按键恢复
-  // 超过 10 分钟: 亮度降为 0(省电), 不关机
+  // 超过 60 分钟: 亮度降为 0(省电), 不关机
   gDimmed = true;
   gShutdownWarned = true;
   M5Cardputer.Display.setBrightness(0);
