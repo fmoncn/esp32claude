@@ -14,9 +14,15 @@
 // 控制: Tab=返回聊天, [=降音, ]=升音, M=静音, R=重连
 namespace Radio {
 
-// 单电台(当前: 星岛中文国语, http MP3 64kbps, 无 PSRAM 硬约束)
-static const char* STATION_NAME = "星岛中文电台";
-static const char* STATION_URL  = "http://nap.casthost.net:8759/;?icy=http";
+// 电台列表(全部 http MP3 ≤64kbps, 无 PSRAM 硬约束)
+struct Station { const char* name; const char* url; };
+static const Station STATIONS[] = {
+  { "星岛中文电台", "http://nap.casthost.net:8759/;?icy=http" },
+  { "第一财经",     "http://lhttp.qtfm.cn/live/276/64k.mp3" },
+  { "广东新闻广播", "http://lhttp.qtfm.cn/live/1254/64k.mp3" },
+};
+static const int NUM_STATIONS = sizeof(STATIONS) / sizeof(STATIONS[0]);
+static int gStationIdx = 0;       // 当前电台索引(0=星岛, 1=第一财经, N键切换)
 
 static Audio audio;
 static bool gActive = false;       // 电台模式是否激活
@@ -40,7 +46,17 @@ inline void toggleMute() {
 }
 inline void reconnect() {
   audio.stopSong();
-  audio.connecttohost(STATION_URL);
+  audio.connecttohost(STATIONS[gStationIdx].url);
+}
+inline int numStations() { return NUM_STATIONS; }
+inline int stationIdx() { return gStationIdx; }
+inline const char* stationName() { return STATIONS[gStationIdx].name; }
+// 切换电台(循环), 停止当前并连下一个
+inline void nextStation() {
+  gStationIdx = (gStationIdx + 1) % NUM_STATIONS;
+  gStationName[0] = 0; gTitle[0] = 0;
+  audio.stopSong();
+  audio.connecttohost(STATIONS[gStationIdx].url);
 }
 
 // 库回调(在音频库任务执行, 只存数据不渲染)
@@ -83,8 +99,8 @@ inline bool enter() {
   audio.setBalance(0);
 
   gStationName[0] = 0; gTitle[0] = 0;
-  Serial.printf("[RADIO] connecting %s... heap=%u\n", STATION_URL, ESP.getFreeHeap());
-  if (audio.connecttohost(STATION_URL)) {
+  Serial.printf("[RADIO] connecting %s... heap=%u\n", STATIONS[gStationIdx].url, ESP.getFreeHeap());
+  if (audio.connecttohost(STATIONS[gStationIdx].url)) {
     gPlaying = true;
     Serial.printf("[RADIO] connect OK, heap=%u\n", ESP.getFreeHeap());
   } else {
@@ -126,21 +142,19 @@ inline void draw() {
   const uint16_t BG = d.color565(8, 14, 26);
   static bool inited = false;
   static int  lastFill = -1;
+  static int  lastStationIdx = -1;
   static bool lastMuted = false, lastPlaying = false;
-  static char lastTitle[48] = {0}, lastStation[40] = {0};
 
-  bool titleChanged = strcmp(gTitle[0] ? gTitle : "", lastTitle) != 0;
-  bool statChanged = (gMuted != lastMuted) || (gPlaying != lastPlaying);
+  // 只检测需要重绘的变化
   int fill = gMuted ? 0 : (110 * gVol / 255);
   bool volChanged = (fill != lastFill);
-  bool stationChanged = strcmp(gStationName[0] ? gStationName : STATION_NAME, lastStation) != 0;
+  bool statChanged = (gMuted != lastMuted) || (gPlaying != lastPlaying);
+  bool idxChanged = (gStationIdx != lastStationIdx);
 
-  if (!inited || titleChanged || statChanged || volChanged || stationChanged) {
-    if (!inited) {  // 首次: 全屏画背景 + 分隔线 + 底部提示
+  if (!inited || volChanged || statChanged || idxChanged) {
+    if (!inited) {  // 首次: 全屏画背景 + 底部提示
       d.fillRect(0, 0, 240, 135, BG);
       d.setFont(&fonts::efontCN_14);
-      d.drawFastHLine(0, 54, 240, 0x39C7);                       // 分隔线
-      d.setTextColor(0x7BCF, BG); d.setCursor(4, 118); d.print("Tab=返回 []=音量 M=静音 R=重连");
       inited = true;
     }
     // 顶部: "电台" + 音量条
@@ -151,25 +165,27 @@ inline void draw() {
     if (fill > 0) d.fillRect(41, 6, fill, 3, 0x07E0);   // 再画当前音量
     lastFill = fill;
 
-    // 站名(仅变化时)
-    if (stationChanged) {
-      d.fillRect(4, 18, 232, 14, BG);
-      d.setTextColor(0xFC4B, BG);
-      d.setCursor(4, 18); d.print(gStationName[0] ? gStationName : STATION_NAME);
-      strcpy(lastStation, gStationName[0] ? gStationName : STATION_NAME);
+    // 频道列表(每个频道一行, 播放中的显示"播放中")
+    const int ROW_H = 20, LIST_Y = 16;
+    for (int i = 0; i < NUM_STATIONS; i++) {
+      int y = LIST_Y + i * ROW_H;
+      d.fillRect(4, y, 232, ROW_H - 2, BG);   // 清该行
+      char buf[40];
+      if (i == gStationIdx) {
+        snprintf(buf, sizeof(buf), ">>> %s 播放中", STATIONS[i].name);
+        d.setTextColor(0xFC4B, BG);   // 播放中=亮橙高亮
+      } else {
+        snprintf(buf, sizeof(buf), "%d %s", i + 1, STATIONS[i].name);
+        d.setTextColor(0xD3AB, BG);   // 非播放=灰
+      }
+      d.setCursor(4, y); d.print(buf);
     }
-    // 曲目/状态(仅变化时)
-    if (titleChanged || statChanged || stationChanged) {
-      d.fillRect(4, 36, 232, 14, BG);
-      d.setTextColor(0xD3AB, BG);
-      d.setCursor(4, 36);
-      if (gMuted) d.print("已静音");
-      else if (gTitle[0]) d.print(gTitle);
-      else if (gPlaying) d.print("播放中…");
-      else d.print("连接失败,按R重连");
-      strcpy(lastTitle, gTitle[0] ? gTitle : "");
-      lastMuted = gMuted; lastPlaying = gPlaying;
-    }
+    // 分隔线(列表末尾下方) + 底部提示
+    int sepY = LIST_Y + NUM_STATIONS * ROW_H + 2;
+    d.drawFastHLine(0, sepY, 240, 0x39C7);
+    d.setTextColor(0x7BCF, BG); d.setCursor(4, 118); d.print("Tab回 N切台 []=音 M静 R连");
+    lastStationIdx = gStationIdx;
+    lastMuted = gMuted; lastPlaying = gPlaying;
   }
 }
 

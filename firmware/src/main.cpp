@@ -433,6 +433,8 @@ static void handleKeyboard() {
         Radio::toggleMute();
       } else if (c == 'r' || c == 'R') {  // 重连
         Radio::reconnect();
+      } else if (c == 'n' || c == 'N') {  // 切换电台(循环)
+        Radio::nextStation();
       }
     }
     return;
