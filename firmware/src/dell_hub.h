@@ -4,6 +4,8 @@
 #include <ArduinoJson.h>
 #include <cstring>
 #include <string>
+#include "config.h"
+#include "net.h"  // backendBase(): 主动对话走同一个后端, 复用 PET_ID/PET_TOKEN
 
 // Dell Hub 信息卡片 (切换场景联动显示)
 // 数据源: Dell Hub (DELL_HOST:4000) 的 JSON API, 局域网无鉴权, 设备直接拉取
@@ -33,6 +35,12 @@ struct Card {
 };
 
 static const char* DELL_HUB = "http://" DELL_HOST ":4000";
+
+// DELL_HOST 未配置(留空或占位符 127.0.0.1)时直接跳过网络请求,
+// 避免每次切场景/每 60s 都空等 6-8s 超时。
+inline bool hubConfigured() {
+  return DELL_HOST[0] && strcmp(DELL_HOST, "127.0.0.1") != 0;
+}
 
 inline Card& cur() { static Card c; return c; }
 inline CardType& cardOfScene() { static CardType t = CARD_QUOTE; return t; }
@@ -103,6 +111,7 @@ inline bool fetch(int sceneIdx) {
   c.has = false;
   c.line1[0] = c.line2[0] = 0;
   c.trend = 0;
+  if (!hubConfigured()) return false;  // 未配置 Hub 主机,静默跳过(不占位卡片文字)
 
   switch (cardOfScene()) {
     case CARD_QUOTE: {
@@ -259,8 +268,12 @@ inline bool fetch(int sceneIdx) {
 // 省内存: 只用一块 80 字符静态缓冲, 不堆分配。
 inline bool fetchProactive(char* msg, size_t n) {
   if (WiFi.status() != WL_CONNECTED) return false;
+  // 走同一个后端(backendBase() 从 BACKEND_URL 推出), 带上真正在用的 PET_ID,
+  // 而不是写死的另一个 id —— 否则读的是一份从没聊过天的空档案, 永远拿不到记忆。
+  std::string url = backendBase() + "/proactive/" + PET_ID;
   WiFiClient client; HTTPClient http;
-  if (!http.begin(client, "http://" DELL_HOST ":8787/proactive/girl")) return false;
+  if (!http.begin(client, url.c_str())) return false;
+  if (std::strlen(PET_TOKEN) > 0) http.addHeader("x-pet-token", PET_TOKEN);
   http.setTimeout(8000);
   int code = http.GET();
   if (code != 200) { http.end(); return false; }

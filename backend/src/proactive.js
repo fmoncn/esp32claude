@@ -1,5 +1,5 @@
-import { LIMITS, PET } from './config.js';
-import { loadPet, savePet } from './store.js';
+import { LIMITS } from './config.js';
+import { loadPet, savePet, withPetLock } from './store.js';
 import { createPet, withDecay } from './pet.js';
 import { buildSystemPrompt } from './persona.js';
 import { chatAsPet } from './llm.js';
@@ -21,38 +21,41 @@ function timeGreeting(hour) {
 }
 
 // 判断是否该主动 + 生成一句主动话。返回 { has:false } 表示此刻不打扰。
+// 同样包在 withPetLock 里 —— 见 brain.js 的注释, 这里和 /chat 读写的是同一份档案。
 export async function proactiveMessage(petId) {
-  const now = Date.now();
-  let pet = (await loadPet(petId)) || createPet(petId);
-  pet = withDecay(pet, now);
+  return withPetLock(petId, async () => {
+    const now = Date.now();
+    let pet = (await loadPet(petId)) || createPet(petId);
+    pet = withDecay(pet, now);
 
-  // 频率控制: 空闲时长 + 冷却
-  const idleMin = (now - (pet.lastInteraction || now)) / 60000;
-  if (idleMin < IDLE_MIN) return { has: false };          // 主人刚互动过,不打扰
-  if (now - (pet.lastProactive || 0) < COOLDOWN_MIN * 60000) return { has: false };  // 冷却中
+    // 频率控制: 空闲时长 + 冷却
+    const idleMin = (now - (pet.lastInteraction || now)) / 60000;
+    if (idleMin < IDLE_MIN) return { has: false };          // 主人刚互动过,不打扰
+    if (now - (pet.lastProactive || 0) < COOLDOWN_MIN * 60000) return { has: false };  // 冷却中
 
-  // 尝试用 LLM 从记忆挑话题(克劳德更贴合);失败回退时段问候
-  let text = '';
-  const topics = (pet.facts || []).slice(-MAX_FACTS);
-  try {
-    const system = buildSystemPrompt(pet);
-    const hint = topics.length
-      ? `【你记得主人这些事,挑一件自然提起】\n${topics.map((f) => `- ${f}`).join('\n')}`
-      : '主人今天还没怎么聊,自然地打个招呼、起个轻松话题。';
-    const r = await chatAsPet(
-      `${system}\n\n你正在主动找主人说话(主人空闲中)。请像关心朋友一样主动开口。`,
-      pet.shortTerm.slice(-4),
-      `${hint}\n(主动发起一句 1 句话,温柔自然地关心/挑个话题,不要问句堆砌,${LIMITS.replyMaxChars} 字内)`
-    );
-    text = r.reply;
-  } catch (e) {
-    text = '';
-  }
-  if (!text.trim()) text = timeGreeting(new Date().getHours());
+    // 尝试用 LLM 从记忆挑话题(克劳德更贴合);失败回退时段问候
+    let text = '';
+    const topics = (pet.facts || []).slice(-MAX_FACTS);
+    try {
+      const system = buildSystemPrompt(pet);
+      const hint = topics.length
+        ? `【你记得主人这些事,挑一件自然提起】\n${topics.map((f) => `- ${f}`).join('\n')}`
+        : '主人今天还没怎么聊,自然地打个招呼、起个轻松话题。';
+      const r = await chatAsPet(
+        `${system}\n\n你正在主动找主人说话(主人空闲中)。请像关心朋友一样主动开口。`,
+        pet.shortTerm.slice(-4),
+        `${hint}\n(主动发起一句 1 句话,温柔自然地关心/挑个话题,不要问句堆砌,${LIMITS.replyMaxChars} 字内)`
+      );
+      text = r.reply;
+    } catch (e) {
+      text = '';
+    }
+    if (!text.trim()) text = timeGreeting(new Date().getHours());
 
-  // 记录主动时间,控制下次频率
-  pet.lastProactive = now;
-  await savePet(pet);
+    // 记录主动时间,控制下次频率
+    pet.lastProactive = now;
+    await savePet(pet);
 
-  return { has: true, message: text.trim().slice(0, LIMITS.replyMaxChars), emotion: 'thinking' };
+    return { has: true, message: text.trim().slice(0, LIMITS.replyMaxChars), emotion: 'thinking' };
+  });
 }

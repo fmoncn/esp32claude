@@ -8,12 +8,14 @@ dotenv.config({ path: join(dirname(fileURLToPath(import.meta.url)), '..', '.env'
 export const config = {
   port: Number(process.env.PORT) || 8787,
   petToken: process.env.PET_TOKEN || '',
-  deepseek: {
+  llm: {
     apiKey: process.env.DEEPSEEK_API_KEY || '',
-    baseUrl: process.env.LLM_BASE_URL || 'http://YOUR_LLM_HOST:YOUR_PORT/v1/chat/completions',
-    model: process.env.LLM_MODEL || 'gemini-3.6-flash-high',
+    baseUrl: process.env.LLM_BASE_URL || 'https://api.deepseek.com/v1/chat/completions',
+    model: process.env.LLM_MODEL || 'deepseek-chat',
+    // 仅自建反代支持 google_search grounding 时才开;官方兼容端点收到会 400
+    enableSearch: process.env.LLM_ENABLE_SEARCH === '1',
     temperature: 0.8,
-    timeoutMs: 60000,  // gemini 带搜索较慢,给足时间
+    timeoutMs: 60000,  // 带搜索的反代较慢,给足时间
   },
 };
 

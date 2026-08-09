@@ -104,7 +104,8 @@ inline void finish() {
 
 // 上传 PCM 到 Azure STT, 返回识别文本
 inline std::string recognize() {
-  // 快速失败: 无 WiFi 直接返回(避免 TLS 白等 15s)
+  // 快速失败: 未配置 Azure key 或无 WiFi 直接返回(避免 TLS 白等 15s)
+  if (!AZURE_STT_KEY[0]) return "";
   if (WiFi.status() != WL_CONNECTED) return "";
   File rf = LittleFS.open("/rec.pcm", "r");
   if (!rf || rf.size() < 8000) { if (rf) rf.close(); LittleFS.remove("/rec.pcm"); return ""; }

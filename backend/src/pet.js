@@ -42,6 +42,13 @@ export function withStatChanges(pet, changes = {}) {
   return { ...pet, stats };
 }
 
+// 对外(设备/API)暴露的 stats: 补一个 intimacy 别名 = affection。
+// 固件 (firmware/src/net.h) 读的字段名是 intimacy, 内部模型/persona 用的是
+// affection —— 在这里做一次映射, 而不是改固件, 这样已烧录的设备不用重刷。
+export function publicStats(pet) {
+  return { ...pet.stats, intimacy: pet.stats.affection };
+}
+
 // 给 prompt 用的人话状态描述
 export function describeState(pet) {
   const { mood, hunger, energy, affection } = pet.stats;

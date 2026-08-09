@@ -1,31 +1,31 @@
 import { config } from './config.js';
 
-async function callDeepSeek(messages, { json = false } = {}) {
-  if (!config.deepseek.apiKey) {
+async function callLLM(messages, { json = false } = {}) {
+  if (!config.llm.apiKey) {
     throw new Error('DEEPSEEK_API_KEY 未配置,请在 backend/.env 里填上');
   }
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), config.deepseek.timeoutMs);
+  const timer = setTimeout(() => controller.abort(), config.llm.timeoutMs);
   try {
-    const res = await fetch(config.deepseek.baseUrl, {
+    const res = await fetch(config.llm.baseUrl, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        authorization: `Bearer ${config.deepseek.apiKey}`,
+        authorization: `Bearer ${config.llm.apiKey}`,
       },
       body: JSON.stringify({
-        model: config.deepseek.model,
+        model: config.llm.model,
         messages,
-        temperature: config.deepseek.temperature,
-        // gemini 实时搜索能力(反代支持 google_search grounding,服务端执行,无 tool 往返)
-        tools: [{ google_search: {} }],
+        temperature: config.llm.temperature,
+        // 实时搜索能力(仅支持 google_search grounding 的反代才需要,见 LLM_ENABLE_SEARCH)
+        ...(config.llm.enableSearch ? { tools: [{ google_search: {} }] } : {}),
         ...(json ? { response_format: { type: 'json_object' } } : {}),
       }),
       signal: controller.signal,
     });
     if (!res.ok) {
       const detail = await res.text().catch(() => '');
-      throw new Error(`DeepSeek ${res.status}: ${detail.slice(0, 200)}`);
+      throw new Error(`LLM ${res.status}: ${detail.slice(0, 200)}`);
     }
     const data = await res.json();
     return data.choices?.[0]?.message?.content ?? '';
@@ -57,7 +57,7 @@ function normalizeReply(parsed, raw) {
 }
 
 async function requestPet(messages) {
-  const raw = await callDeepSeek(messages, { json: true });
+  const raw = await callLLM(messages, { json: true });
   const parsed = extractJson(raw) || {};
   // suggestions: 推理主人下一步建议(2-3条, 每条≤12字; 无则空数组)
   let suggestions = [];
@@ -110,7 +110,7 @@ export async function summarize(prevSummary, overflowTurns) {
     '',
     `【新增对话】\n${convo}`,
   ].join('\n');
-  const raw = await callDeepSeek([{ role: 'user', content: prompt }]);
+  const raw = await callLLM([{ role: 'user', content: prompt }]);
   return raw.trim().slice(0, 600);
 }
 
@@ -125,7 +125,7 @@ export async function translateText(text) {
     `Output ONLY the translation, no quotes, no explanation, no extra words.\n\n` +
     `Text: ${trimmed}`;
   try {
-    const raw = await callDeepSeek([{ role: 'user', content: prompt }]);
+    const raw = await callLLM([{ role: 'user', content: prompt }]);
     const translation = raw.trim().slice(0, 400);
     return { ok: !!translation, translation, from: hasHan ? 'zh' : 'en' };
   } catch (err) {
