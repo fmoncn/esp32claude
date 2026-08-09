@@ -54,6 +54,8 @@ inline bool enter() {
 
   // 释放克劳德运行时内存给音频解码(关键): 清精灵缓存/场景临时
   Serial.printf("[RADIO] enter: heap_before=%u largest=%u\n", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+  // 打印内存分区诊断
+  heap_caps_print_heap_info(MALLOC_CAP_8BIT);
 
   // WiFi: 克劳德已连接(ensureWiFi), 这里等 IP 就绪 + 设公共 DNS(不覆盖IP)
   uint32_t t0 = millis();
@@ -120,43 +122,58 @@ inline void loop() {
   }
 }
 
-// 电台 UI(画到 canvas, 方案A: 不画克劳德场景/精灵)
-inline void draw(M5Canvas& canvas) {
-  const int W = 240;
-  canvas.fillRect(0, 0, W, 135, canvas.color565(8, 14, 26));  // 深色背景
+// 电台 UI(直接用 Display 画; 局部更新防闪烁, 不全屏反复清屏)
+// 只在音量条/曲目/状态变化时更新对应区域, 避免 fillRect 高频清屏频闪
+inline void draw() {
+  auto& d = M5Cardputer.Display;
+  const uint16_t BG = d.color565(8, 14, 26);
+  static bool inited = false;
+  static int  lastFill = -1;
+  static bool lastMuted = false, lastPlaying = false;
+  static char lastTitle[48] = {0}, lastStation[40] = {0};
 
-  // 统一用默认 14px 字体(克劳德标准)
-  canvas.setFont(&fonts::efontCN_14);
+  bool titleChanged = strcmp(gTitle[0] ? gTitle : "", lastTitle) != 0;
+  bool statChanged = (gMuted != lastMuted) || (gPlaying != lastPlaying);
+  int fill = gMuted ? 0 : (110 * gVol / 255);
+  bool volChanged = (fill != lastFill);
+  bool stationChanged = strcmp(gStationName[0] ? gStationName : STATION_NAME, lastStation) != 0;
 
-  // 顶部: "电台" + 音量条
-  canvas.setTextColor(0x07E0, canvas.color565(8, 14, 26));   // 绿"电台"
-  canvas.setCursor(4, 2); canvas.print("电台");
-  // 音量条(左, 宽度 120)
-  int vw = 110, vh = 5, vx = 40, vy = 5;
-  canvas.drawRect(vx, vy, vw, vh, 0x7BEF);
-  int fill = gMuted ? 0 : (vw * gVol / 255);
-  if (fill > 0) canvas.fillRect(vx + 1, vy + 1, fill - 1, vh - 2, 0x07E0);
+  if (!inited || titleChanged || statChanged || volChanged || stationChanged) {
+    if (!inited) {  // 首次: 全屏画背景 + 分隔线 + 底部提示
+      d.fillRect(0, 0, 240, 135, BG);
+      d.setFont(&fonts::efontCN_14);
+      d.drawFastHLine(0, 54, 240, 0x39C7);                       // 分隔线
+      d.setTextColor(0x7BCF, BG); d.setCursor(4, 118); d.print("Tab=返回 []=音量 M=静音 R=重连");
+      inited = true;
+    }
+    // 顶部: "电台" + 音量条
+    d.setTextColor(0x07E0, BG);
+    d.setCursor(4, 2); d.print("电台");
+    d.drawRect(40, 5, 110, 5, 0x7BEF);
+    if (fill > 0) d.fillRect(41, 6, fill - 1, 3, 0x07E0);
+    else d.fillRect(41, 6, 109, 3, BG);   // 清空音量条(静音/降0)
+    lastFill = fill;
 
-  // 站名(14px, 亮橙)
-  canvas.setTextColor(0xFC4B, canvas.color565(8, 14, 26));   // 亮橙
-  canvas.setCursor(4, 18);
-  canvas.print(gStationName[0] ? gStationName : STATION_NAME);
-
-  // 曲目/状态(14px, 灰)
-  canvas.setTextColor(0xD3AB, canvas.color565(8, 14, 26));
-  canvas.setCursor(4, 36);
-  if (gMuted) canvas.print("已静音");
-  else if (gTitle[0]) canvas.print(gTitle);
-  else if (gPlaying) canvas.print("播放中…");
-  else canvas.print("连接失败,按R重连");
-
-  // 分隔线
-  canvas.drawFastHLine(0, 54, W, 0x39C7);
-
-  // 底部提示(14px)
-  canvas.setTextColor(0x7BCF, canvas.color565(8, 14, 26));
-  canvas.setCursor(4, 118);
-  canvas.print("Tab=返回 []=音量 M=静音 R=重连");
+    // 站名(仅变化时)
+    if (stationChanged) {
+      d.fillRect(4, 18, 232, 14, BG);
+      d.setTextColor(0xFC4B, BG);
+      d.setCursor(4, 18); d.print(gStationName[0] ? gStationName : STATION_NAME);
+      strcpy(lastStation, gStationName[0] ? gStationName : STATION_NAME);
+    }
+    // 曲目/状态(仅变化时)
+    if (titleChanged || statChanged || stationChanged) {
+      d.fillRect(4, 36, 232, 14, BG);
+      d.setTextColor(0xD3AB, BG);
+      d.setCursor(4, 36);
+      if (gMuted) d.print("已静音");
+      else if (gTitle[0]) d.print(gTitle);
+      else if (gPlaying) d.print("播放中…");
+      else d.print("连接失败,按R重连");
+      strcpy(lastTitle, gTitle[0] ? gTitle : "");
+      lastMuted = gMuted; lastPlaying = gPlaying;
+    }
+  }
 }
 
 }  // namespace Radio

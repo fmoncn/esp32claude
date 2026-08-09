@@ -114,9 +114,8 @@ static void setReply(const std::string& t) {
 static void setTransient(const char* a, uint32_t ms) { transientAction = a; transientUntil = millis() + ms; }
 
 static void render() {
-  if (Radio::isActive()) {   // 电台模式: 只画电台 UI, 不画克劳德场景(方案A)
-    Radio::draw(canvas);
-    canvas.pushSprite(0, 0);
+  if (Radio::isActive()) {   // 电台模式: 直接用 Display, 不经过 canvas(已释放)
+    Radio::draw();
     return;
   }
   Scenes::draw(canvas, millis(), gSceneIdx, (int)roamX);   // 天空+场景+网格+落地光圈
@@ -402,8 +401,17 @@ static void handleKeyboard() {
   gIdleSince = millis();  // 按键=有操作,重置省电计时
   // Tab 键: 切换 聊天模式 ↔ 电台模式
   if (st.tab) {
-    if (Radio::isActive()) { Radio::exit(); setReply("回到聊天模式"); }
-    else { setReply("进入电台模式"); Radio::enter(); }
+    if (Radio::isActive()) {
+      Radio::exit();
+      canvas.deleteSprite();          // 先释放电台时删掉的 canvas 占位
+      canvas.createSprite(240, 135);  // 重建全屏 canvas(聊天模式渲染)
+      canvas.fillScreen(0);
+      setReply("回到聊天模式");
+    } else {
+      setReply("进入电台模式");
+      canvas.deleteSprite();   // 释放 48KB canvas 缓冲给音频解码(关键)
+      Radio::enter();
+    }
     return;
   }
   // Ctrl 键: 切换场景(按一下换一个)
@@ -538,8 +546,8 @@ void loop() {
     static String cmd;
     char ch = Serial.read();
     if (ch == '\n') { cmd.trim();
-      if (cmd == "radio" && !Radio::isActive()) { sSerialRadio = true; Radio::enter(); }
-      else if (cmd == "exit" && Radio::isActive()) { sSerialRadio = false; Radio::exit(); }
+      if (cmd == "radio" && !Radio::isActive()) { sSerialRadio = true; canvas.deleteSprite(); Radio::enter(); }
+      else if (cmd == "exit" && Radio::isActive()) { sSerialRadio = false; Radio::exit(); canvas.createSprite(240, 135); canvas.fillScreen(0); }
       cmd = "";
     } else if (ch != '\r') { cmd += ch; }
   }
