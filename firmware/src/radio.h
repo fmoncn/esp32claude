@@ -17,7 +17,8 @@ namespace Radio {
 // 电台列表(全部 http MP3 ≤64kbps, 无 PSRAM 硬约束)
 struct Station { const char* name; const char* url; };
 static const Station STATIONS[] = {
-  { "星岛中文电台", "http://nap.casthost.net:8759/;?icy=http" },
+  { "星岛中文国语", "http://nap.casthost.net:8759/;?icy=http" },
+  { "星岛中文粤语", "http://nap.casthost.net:8765/;?icy=http" },
   { "第一财经",     "http://lhttp.qtfm.cn/live/276/64k.mp3" },
   { "广东新闻广播", "http://lhttp.qtfm.cn/live/1254/64k.mp3" },
 };
