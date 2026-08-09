@@ -70,33 +70,20 @@ inline int fetchIntimacy() {
   http.end(); return iv;
 }
 
-inline bool wifiConnect(uint32_t timeoutMs = 15000) {
+inline bool wifiConnect(uint32_t timeoutMs = 12000) {
   WiFi.mode(WIFI_STA);
   WiFi.setAutoReconnect(true);  // 开启底层自动重连
   WiFi.persistent(true);
   // 多 WiFi: 主路由器优先, 失败试备用热点
   const char* ssids[] = { WIFI_SSID, WIFI2_SSID };
   const char* pwds[] = { WIFI_PASSWORD, WIFI2_PASSWORD };
+  // 先直接凭据连接主 SSID(最快, 不扫描; ESP32 自动找网络, 通常 1-2 秒)
+  // 注意: mesh 多节点时可能连到非最强节点, 但启动快更重要, 漫游后续由 ensureWiFi 优化
   for (int k = 0; k < 2; k++) {
-    // 先扫描, 选信号最强的匹配 BSSID(mesh 多节点时固定连最强, 避免连到弱节点)
-    int n = WiFi.scanNetworks();
-    String bestBssid = ""; int bestRssi = -999;
-    for (int i = 0; i < n; i++) {
-      if (String(ssids[k]).equals(WiFi.SSID(i))) {  // 匹配 SSID
-        int r = WiFi.RSSI(i);
-        if (r > bestRssi) { bestRssi = r; bestBssid = WiFi.BSSIDstr(i); }
-      }
-    }
-    if (bestBssid.length() > 0) {
-      // 绑最强节点 BSSID 连接
-      uint8_t bssid[6]; sscanf(bestBssid.c_str(), "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx",
-        &bssid[0], &bssid[1], &bssid[2], &bssid[3], &bssid[4], &bssid[5]);
-      WiFi.begin(ssids[k], pwds[k], 0, bssid, true);
-    } else {
-      WiFi.begin(ssids[k], pwds[k]);
-    }
+    WiFi.begin(ssids[k], pwds[k]);
     uint32_t t0 = millis();
-    while (WiFi.status() != WL_CONNECTED && millis() - t0 < timeoutMs / 2) delay(200);
+    uint32_t wait = (k == 0) ? (timeoutMs / 2) : (timeoutMs / 3);  // 主SSID等久一点
+    while (WiFi.status() != WL_CONNECTED && millis() - t0 < wait) delay(100);
     if (WiFi.status() == WL_CONNECTED) {
       Serial.printf("[WIFI] 已连接 %s 信号=%d dBm BSSID=%s ch=%d\n",
         WiFi.SSID().c_str(), WiFi.RSSI(), WiFi.BSSIDstr().c_str(), WiFi.channel());
