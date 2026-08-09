@@ -77,10 +77,25 @@ inline bool wifiConnect(uint32_t timeoutMs = 12000) {
   // 多 WiFi: 主路由器优先, 失败试备用热点
   const char* ssids[] = { WIFI_SSID, WIFI2_SSID };
   const char* pwds[] = { WIFI_PASSWORD, WIFI2_PASSWORD };
-  // 先直接凭据连接主 SSID(最快, 不扫描; ESP32 自动找网络, 通常 1-2 秒)
-  // 注意: mesh 多节点时可能连到非最强节点, 但启动快更重要, 漫游后续由 ensureWiFi 优化
+  // 先限时扫描选信号最强的匹配 BSSID(mesh 多节点固定连最强, 避免连到弱/远节点)
+  // scanNetworks 第4参数限制每信道扫描毫秒数 → 比默认快很多, 且能选强节点
+  int n = WiFi.scanNetworks(false, false, false, 200);
+  String bestBssid[2] = {"", ""}; int bestRssi[2] = {-999, -999}; int bestCh[2] = {0, 0};
+  for (int i = 0; i < n; i++) {
+    for (int k = 0; k < 2; k++) {
+      if (String(ssids[k]).equals(WiFi.SSID(i)) && WiFi.RSSI(i) > bestRssi[k]) {
+        bestRssi[k] = WiFi.RSSI(i); bestBssid[k] = WiFi.BSSIDstr(i); bestCh[k] = WiFi.channel(i);
+      }
+    }
+  }
   for (int k = 0; k < 2; k++) {
-    WiFi.begin(ssids[k], pwds[k]);
+    if (bestBssid[k].length() > 0) {
+      uint8_t bssid[6]; sscanf(bestBssid[k].c_str(), "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx",
+        &bssid[0], &bssid[1], &bssid[2], &bssid[3], &bssid[4], &bssid[5]);
+      WiFi.begin(ssids[k], pwds[k], bestCh[k], bssid, true);  // 绑最强节点+通道, 连接快
+    } else {
+      WiFi.begin(ssids[k], pwds[k]);
+    }
     uint32_t t0 = millis();
     uint32_t wait = (k == 0) ? (timeoutMs / 2) : (timeoutMs / 3);  // 主SSID等久一点
     while (WiFi.status() != WL_CONNECTED && millis() - t0 < wait) delay(100);
