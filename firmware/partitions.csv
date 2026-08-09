@@ -1,6 +1,7 @@
-# 自定义分区(总量控制在 4MB 内,规避 FN8 在 8MB 表上的重启坑)
+# 自定义分区: app 增大以容纳 ESP32-audioI2S 库(MP3电台), spiffs 存精灵
+# 突破原 4MB 约束用 8MB Flash 空间(需验证 FN8 重启坑是否规避)
 # Name,     Type, SubType, Offset,   Size
 nvs,      data, nvs,     0x9000,   0x6000,
 phy_init, data, phy,     0xf000,   0x1000,
-factory,  app,  factory, 0x10000,  0x1B0000,
-spiffs,   data, spiffs,  0x1C0000, 0x230000,
+factory,  app,  factory, 0x10000,  0x280000,
+spiffs,   data, spiffs,  0x290000, 0x230000,

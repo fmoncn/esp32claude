@@ -19,9 +19,7 @@
 #include "stt.h"
 #include "pet_touch.h"
 #include "tunes.h"
-#ifdef RADIO_SPIKE
-#include "radio_spike.h"
-#endif
+#include "radio.h"
 
 // TLS + WebSocket 握手很吃栈;加大 loop 任务栈
 SET_LOOP_TASK_STACK_SIZE(32 * 1024);
@@ -116,6 +114,11 @@ static void setReply(const std::string& t) {
 static void setTransient(const char* a, uint32_t ms) { transientAction = a; transientUntil = millis() + ms; }
 
 static void render() {
+  if (Radio::isActive()) {   // 电台模式: 只画电台 UI, 不画克劳德场景(方案A)
+    Radio::draw(canvas);
+    canvas.pushSprite(0, 0);
+    return;
+  }
   Scenes::draw(canvas, millis(), gSceneIdx, (int)roamX);   // 天空+场景+网格+落地光圈
   Scenes::drawPanels(canvas, gSceneIdx, gIntimacy);        // HUD:时钟/日期/天气/亲密度(全真实)
   player.draw(canvas, (int)roamX - SPR_W / 2, GROUND - SPR_H, facing);  // 角色在最前
@@ -227,10 +230,6 @@ static void brainTask(void*);  // 定义在下方
 void setup() {
   Serial.begin(115200);
   delay(800);  // 等 USB CDC Serial 就绪, 确保诊断输出可见
-#ifdef RADIO_SPIKE
-  radioSpikeSetup();  // 电台 Spike 验证模式(不初始化克劳德, 最省内存)
-  return;
-#endif
   auto cfg = M5.config();
   M5Cardputer.begin(cfg, true);
   // NS4150 D类功放空闲时产生电流声(嗡嗡): 静音消除(参考 M5Claw 避坑)
@@ -264,6 +263,7 @@ void setup() {
     setReply("连不上 WiFi…去 config.h 检查。");
     setTransient("sad", 0xFFFFFFFF);
   }
+  Serial.printf("[BOOT] heap=%u largest=%u\n", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
 }
 
 // 把一句话交给后台核去思考+朗读;立即返回,主循环继续跑动画。打字和语音共用
@@ -400,6 +400,12 @@ static void handleKeyboard() {
   // 思考/说话中不收其他键
   if (gPhase != PH_IDLE) return;
   gIdleSince = millis();  // 按键=有操作,重置省电计时
+  // Tab 键: 切换 聊天模式 ↔ 电台模式
+  if (st.tab) {
+    if (Radio::isActive()) { Radio::exit(); setReply("回到聊天模式"); }
+    else { setReply("进入电台模式"); Radio::enter(); }
+    return;
+  }
   // Ctrl 键: 切换场景(按一下换一个)
   if (st.ctrl) { gAutoScene = false; gSceneIdx = (gSceneIdx + 1) % Scenes::count();
                  setReply(std::string("场景：") + Scenes::name(gSceneIdx)); return; }
@@ -524,12 +530,26 @@ static void checkIdleDim() {
 }
 
 void loop() {
-#ifdef RADIO_SPIKE
-  radioSpikeLoop();  // 电台 Spike 验证模式
-  return;
-#endif
   M5Cardputer.update();
   handleKeyboard();
+  // 串口调试命令: "radio"进电台, "exit"退出(开发/测试用)
+  static bool sSerialRadio = false;
+  if (Serial.available()) {
+    static String cmd;
+    char ch = Serial.read();
+    if (ch == '\n') { cmd.trim();
+      if (cmd == "radio" && !Radio::isActive()) { sSerialRadio = true; Radio::enter(); }
+      else if (cmd == "exit" && Radio::isActive()) { sSerialRadio = false; Radio::exit(); }
+      cmd = "";
+    } else if (ch != '\r') { cmd += ch; }
+  }
+  // 电台模式: 驱动音频 + 电台UI, 跳过克劳德场景/抚摸/主动对话(方案A省内存)
+  if (Radio::isActive()) {
+    Radio::loop();
+    render();
+    delay(5);
+    return;
+  }
   checkIdleDim();
   uint32_t now = millis();
 
