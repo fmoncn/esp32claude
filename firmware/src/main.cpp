@@ -414,6 +414,21 @@ static void handleKeyboard() {
     }
     return;
   }
+  // 电台模式激活: 只处理亮度键(- =), 其他按键交给 Radio::loop(音量[ ]/静音M/重连R)
+  if (Radio::isActive()) {
+    for (char c : st.word) {
+      if (c == '-') {  // 亮度降低10%(待机调暗时先恢复)
+        if (gDimmed) { gDimmed = false; M5Cardputer.Display.setBrightness(gBrightness); gIdleSince = millis(); }
+        int b = gBrightness; b = (b > 26) ? b - 26 : 0;
+        gBrightness = b; M5Cardputer.Display.setBrightness(b);
+      } else if (c == '=') {  // 亮度增加10%
+        if (gDimmed) { gDimmed = false; M5Cardputer.Display.setBrightness(gBrightness); gIdleSince = millis(); }
+        int b = gBrightness; b = (b < 229) ? b + 26 : 255;
+        gBrightness = b; M5Cardputer.Display.setBrightness(b);
+      }
+    }
+    return;
+  }
   // Ctrl 键: 切换场景(按一下换一个)
   if (st.ctrl) { gAutoScene = false; gSceneIdx = (gSceneIdx + 1) % Scenes::count();
                  setReply(std::string("场景：") + Scenes::name(gSceneIdx)); return; }

@@ -150,8 +150,8 @@ inline void draw() {
     d.setTextColor(0x07E0, BG);
     d.setCursor(4, 2); d.print("电台");
     d.drawRect(40, 5, 110, 5, 0x7BEF);
-    if (fill > 0) d.fillRect(41, 6, fill - 1, 3, 0x07E0);
-    else d.fillRect(41, 6, 109, 3, BG);   // 清空音量条(静音/降0)
+    d.fillRect(41, 6, 109, 3, BG);       // 先清空整个音量条内部
+    if (fill > 0) d.fillRect(41, 6, fill, 3, 0x07E0);   // 再画当前音量
     lastFill = fill;
 
     // 站名(仅变化时)
