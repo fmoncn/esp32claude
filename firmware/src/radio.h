@@ -29,9 +29,18 @@ static char gStationName[40] = {0};  // 从库回调获取的站名
 static char gTitle[48] = {0};        // 从库回调获取的曲目
 
 // 库音量范围是 0-21, 不是 0-255! 内部用 0-255, 调用时 map
-static void setVol(int v) {
+inline void setVol(int v) {
   gVol = v;
   audio.setVolume(map(v, 0, 255, 0, 21));
+}
+inline int vol() { return gVol; }
+inline void toggleMute() {
+  gMuted = !gMuted;
+  audio.setVolume(gMuted ? 0 : map(gVol, 0, 255, 0, 21));
+}
+inline void reconnect() {
+  audio.stopSong();
+  audio.connecttohost(STATION_URL);
 }
 
 // 库回调(在音频库任务执行, 只存数据不渲染)
@@ -85,7 +94,7 @@ inline bool enter() {
   return true;
 }
 
-// 退出电台模式: 停止播放, 释放音频
+// 退出电台模式: 停止播放
 inline void exit() {
   if (!gActive) return;
   audio.stopSong();
@@ -95,24 +104,12 @@ inline void exit() {
 
 inline bool isActive() { return gActive; }
 
-// 电台模式主循环: 驱动音频 + 控制键 + 更新状态
+// 电台模式主循环: 只驱动音频库(按键由 handleKeyboard 统一处理, 避免键盘竞争)
 inline void loop() {
   if (!gActive) return;
   audio.loop();
 
-  // 控制键: Tab返回, [降, ]升, M静音, R重连
-  M5Cardputer.update();
-  auto st = M5Cardputer.Keyboard.keysState();
   uint32_t now = millis();
-  if (now > gDebounce) {
-    for (auto c : st.word) {
-      if (c == '[') { setVol(gVol >= 10 ? gVol - 10 : 0); gDebounce = now + 200; }
-      else if (c == ']') { setVol(gVol <= 245 ? gVol + 10 : 255); gDebounce = now + 200; }
-      else if (c == 'm' || c == 'M') { gMuted = !gMuted; audio.setVolume(gMuted ? 0 : map(gVol, 0, 255, 0, 21)); gDebounce = now + 200; }
-      else if (c == 'r' || c == 'R') { audio.stopSong(); audio.connecttohost(STATION_URL); gDebounce = now + 500; }
-    }
-  }
-
   // 定期打印 heap + 播放状态(监控不爆内存 + 确认音频流)
   if (now - gHeapLog > 5000) {
     gHeapLog = now;

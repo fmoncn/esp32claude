@@ -402,11 +402,11 @@ static void handleKeyboard() {
   // Tab 键: 切换 聊天模式 ↔ 电台模式
   if (st.tab) {
     if (Radio::isActive()) {
-      Radio::exit();
-      canvas.deleteSprite();          // 先释放电台时删掉的 canvas 占位
-      canvas.createSprite(240, 135);  // 重建全屏 canvas(聊天模式渲染)
-      canvas.fillScreen(0);
-      setReply("回到聊天模式");
+      // 退出电台: 音频缓冲碎片化导致 canvas 重建可能失败(内存不足), 直接软重启回克劳德
+      // 重启后默认聊天模式(电台是 Tab 触发的, 重启即回克劳德)
+      Serial.println("[RADIO] exit radio, rebooting to Claude...");
+      delay(200);
+      ESP.restart();
     } else {
       setReply("进入电台模式");
       canvas.deleteSprite();   // 释放 48KB canvas 缓冲给音频解码(关键)
@@ -414,7 +414,7 @@ static void handleKeyboard() {
     }
     return;
   }
-  // 电台模式激活: 只处理亮度键(- =), 其他按键交给 Radio::loop(音量[ ]/静音M/重连R)
+  // 电台模式激活: 处理电台键(音量[ ]/静音M/重连R/亮度- =), Tab已在上面处理
   if (Radio::isActive()) {
     for (char c : st.word) {
       if (c == '-') {  // 亮度降低10%(待机调暗时先恢复)
@@ -425,6 +425,14 @@ static void handleKeyboard() {
         if (gDimmed) { gDimmed = false; M5Cardputer.Display.setBrightness(gBrightness); gIdleSince = millis(); }
         int b = gBrightness; b = (b < 229) ? b + 26 : 255;
         gBrightness = b; M5Cardputer.Display.setBrightness(b);
+      } else if (c == '[') {  // 音量降10%
+        Radio::setVol(Radio::vol() >= 10 ? Radio::vol() - 10 : 0);
+      } else if (c == ']') {  // 音量升10%
+        Radio::setVol(Radio::vol() <= 245 ? Radio::vol() + 10 : 255);
+      } else if (c == 'm' || c == 'M') {  // 静音
+        Radio::toggleMute();
+      } else if (c == 'r' || c == 'R') {  // 重连
+        Radio::reconnect();
       }
     }
     return;
@@ -562,7 +570,7 @@ void loop() {
     char ch = Serial.read();
     if (ch == '\n') { cmd.trim();
       if (cmd == "radio" && !Radio::isActive()) { sSerialRadio = true; canvas.deleteSprite(); Radio::enter(); }
-      else if (cmd == "exit" && Radio::isActive()) { sSerialRadio = false; Radio::exit(); canvas.createSprite(240, 135); canvas.fillScreen(0); }
+      else if (cmd == "exit" && Radio::isActive()) { sSerialRadio = false; Serial.println("[RADIO] exit radio, rebooting..."); delay(100); ESP.restart(); }
       cmd = "";
     } else if (ch != '\r') { cmd += ch; }
   }
