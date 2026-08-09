@@ -19,6 +19,9 @@
 #include "stt.h"
 #include "pet_touch.h"
 #include "tunes.h"
+#ifdef RADIO_SPIKE
+#include "radio_spike.h"
+#endif
 
 // TLS + WebSocket 握手很吃栈;加大 loop 任务栈
 SET_LOOP_TASK_STACK_SIZE(32 * 1024);
@@ -224,6 +227,10 @@ static void brainTask(void*);  // 定义在下方
 void setup() {
   Serial.begin(115200);
   delay(800);  // 等 USB CDC Serial 就绪, 确保诊断输出可见
+#ifdef RADIO_SPIKE
+  radioSpikeSetup();  // 电台 Spike 验证模式(不初始化克劳德, 最省内存)
+  return;
+#endif
   auto cfg = M5.config();
   M5Cardputer.begin(cfg, true);
   // NS4150 D类功放空闲时产生电流声(嗡嗡): 静音消除(参考 M5Claw 避坑)
@@ -517,6 +524,10 @@ static void checkIdleDim() {
 }
 
 void loop() {
+#ifdef RADIO_SPIKE
+  radioSpikeLoop();  // 电台 Spike 验证模式
+  return;
+#endif
   M5Cardputer.update();
   handleKeyboard();
   checkIdleDim();
