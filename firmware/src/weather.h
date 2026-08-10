@@ -1,6 +1,5 @@
 #pragma once
 #include <WiFi.h>
-#include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
 #include <math.h>
 #include <cstring>
@@ -59,11 +58,12 @@ inline void decodeChunked(const char* in, size_t inLen, std::string& out) {
   }
 }
 
-// 拉当前天气(open-meteo,硬编码中山经纬度)
+// 拉当前天气(open-meteo,硬编码中山经纬度)。用 http(非 TLS): 无 PSRAM 下
+// WiFiClientSecure/mbedTLS 握手内存不足会失败, open-meteo 支持 http, 省内存稳定。
 inline void fetch() {
   if (WiFi.status() != WL_CONNECTED) return;
-  WiFiClientSecure tls; tls.setInsecure(); tls.setHandshakeTimeout(10); tls.setTimeout(15);
-  if (!tls.connect("api.open-meteo.com", 443, 12000)) return;
+  WiFiClient tls; tls.setTimeout(15);
+  if (!tls.connect("api.open-meteo.com", 80, 12000)) return;
   char query[192];
   snprintf(query, sizeof(query),
            "/v1/forecast?latitude=%.4f&longitude=%.4f&current=temperature_2m,weather_code",
@@ -102,6 +102,7 @@ inline void fetch() {
     cur().t = (int)lroundf(cw["temperature_2m"].as<float>());
     const char* cat; const char* label; mapCode(cw["weather_code"] | 0, cat, label);
     cur().cat = cat; cur().label = label;
+    Serial.printf("[WX] ok %dC %s\n", cur().t, cur().label);
   }
 }
 }  // namespace WX

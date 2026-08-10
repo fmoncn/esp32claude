@@ -46,7 +46,7 @@ static uint32_t kbdIgnoreUntil = 0;
 // 主动对话: 克劳德主动找主人说话(轮询后端 /proactive + 三连音提醒)
 static uint32_t gProNext = 0;             // 下次主动轮询时间(每60s)
 static bool gBootPro = false;             // 开机主动标记: 开机后首次轮询用 boot=true 聊hub
-static char gProMsg[80] = {0};            // 主动消息缓冲(省内存:固定80字符)
+static char gProMsg[200] = {0};          // 主动消息缓冲(容纳完整主动话, 不截断)
 static uint32_t gProRingUntil = 0;        // 三连音播报冷却(防反复)
 static bool gSleeping = false;            // 睡眠状态标志(困倦/唤醒音效切换检测)
 
@@ -58,9 +58,13 @@ static volatile int gPhase = PH_IDLE;
 static SemaphoreHandle_t gMtx = nullptr;
 static std::string gJobMsg;                              // 主→任务:待处理的话(gMtx 保护)
 static volatile bool gJobReady = false;
+static volatile bool gSceneJob = false;   // true=当前 job 是切场景主动(聊该场景hub)
 static std::string gResReply, gResEmotion, gResName;     // 任务→主:结果(gMtx 保护)
 static volatile uint32_t gResSeq = 0;
 static uint32_t gLastSeq = 0;
+static std::string gSceneReply;                           // 任务→主:切场景主动话(独立通道,不覆盖聊天回复)
+static volatile uint32_t gSceneSeq = 0;
+static uint32_t gLastSceneSeq = 0;
 
 // 录音中状态(底部角标用,不再全屏黑)
 
@@ -272,10 +276,17 @@ static void submitJob(const std::string& msg) {
   if (msg.empty()) return;
   gIdleSince = millis();  // 对话=有操作,重置省电计时
   xSemaphoreTake(gMtx, portMAX_DELAY);
-  gJobMsg = msg; gJobReady = true;
+  gJobMsg = msg; gJobReady = true; gSceneJob = false;
   xSemaphoreGive(gMtx);
   setReply("(在想…)");
   input.clear();
+}
+
+// 提交切场景主动任务: 后台核拉 /scene 聊该场景 hub 信息, 不阻塞主循环/不打断聊天回复
+static void submitSceneJob(int sceneIdx) {
+  xSemaphoreTake(gMtx, portMAX_DELAY);
+  gJobMsg = std::to_string(sceneIdx); gJobReady = true; gSceneJob = true;
+  xSemaphoreGive(gMtx);
 }
 
 // 按住 Opt 说话: 开始录音(状态机), 松开/5秒后自动上传 Azure STT → 提交对话
@@ -322,27 +333,37 @@ static void brainTask(void*) {
   for (;;) {
     if (gJobReady) {
       std::string msg;
-      xSemaphoreTake(gMtx, portMAX_DELAY); msg = gJobMsg; gJobReady = false; xSemaphoreGive(gMtx);
+      bool isScene;
+      xSemaphoreTake(gMtx, portMAX_DELAY); msg = gJobMsg; isScene = gSceneJob; gJobReady = false; xSemaphoreGive(gMtx);
 
-      gPhase = PH_THINKING;
-      if (gTranslate) {  // 翻译模式:中英互译(不查记忆/不更新亲密度)
-        std::string translation;
-        bool ok = translateText(msg, translation);
-        xSemaphoreTake(gMtx, portMAX_DELAY);
-        gResReply = ok ? translation : "(翻译失败,请检查网络)";
-        gResEmotion = ok ? "neutral" : "sad";
-        gResName = ""; gResSeq++;  // 翻译无建议
-        xSemaphoreGive(gMtx);
-      } else {  // 聊天模式
-        PetReply r = askPet(msg);
-        if (r.intimacy >= 0) gIntimacy = r.intimacy;
-        xSemaphoreTake(gMtx, portMAX_DELAY);
-        gResReply = r.reply; gResEmotion = r.emotion; gResName = r.name; gResSeq++;
-        xSemaphoreGive(gMtx);
+      if (isScene) {  // 切场景主动: 拉 /scene 聊该场景 hub 信息(独立通道, 不覆盖聊天回复)
+        char sc[200];   // 容纳完整场景话(不截断)
+        bool ok = Hub::fetchSceneGreet(sc, sizeof(sc), atoi(msg.c_str()));
+        if (ok) {
+          xSemaphoreTake(gMtx, portMAX_DELAY);
+          gSceneReply = sc; gSceneSeq++;
+          xSemaphoreGive(gMtx);
+        }
+      } else {
+        gPhase = PH_THINKING;
+        if (gTranslate) {  // 翻译模式:中英互译(不查记忆/不更新亲密度)
+          std::string translation;
+          bool ok = translateText(msg, translation);
+          xSemaphoreTake(gMtx, portMAX_DELAY);
+          gResReply = ok ? translation : "(翻译失败,请检查网络)";
+          gResEmotion = ok ? "neutral" : "sad";
+          gResName = ""; gResSeq++;  // 翻译无建议
+          xSemaphoreGive(gMtx);
+        } else {  // 聊天模式
+          PetReply r = askPet(msg);
+          if (r.intimacy >= 0) gIntimacy = r.intimacy;
+          xSemaphoreTake(gMtx, portMAX_DELAY);
+          gResReply = r.reply; gResEmotion = r.emotion; gResName = r.name; gResSeq++;
+          xSemaphoreGive(gMtx);
+        }
+        kbdIgnoreUntil = millis() + 300;  // 回复后冷却,防误触
+        gPhase = PH_IDLE;
       }
-
-      kbdIgnoreUntil = millis() + 300;  // 回复后冷却,防误触
-      gPhase = PH_IDLE;
     }
     // WiFi 断了就在后台尝试重连(每 15s)
     static uint32_t reconNext = 0;
@@ -447,9 +468,10 @@ static void handleKeyboard() {
     }
     return;
   }
-  // Ctrl 键: 切换场景(按一下换一个)
+  // Ctrl 键: 切换场景(按一下换一个)。切场景时克劳德主动聊该场景 hub 卡片信息
   if (st.ctrl) { gAutoScene = false; gSceneIdx = (gSceneIdx + 1) % Scenes::count();
-                 setReply(std::string("场景：") + Scenes::name(gSceneIdx)); return; }
+                 submitSceneJob(gSceneIdx);   // 后台聊该场景 hub, 不阻塞主循环
+                 return; }
   // Aa 键(Shift): 切换中/英文输入
   if (st.shift) { gInputMode = !gInputMode; pinyinIME.clear();
                   setReply(gInputMode ? "中文输入" : "英文输入"); return; }
@@ -461,11 +483,11 @@ static void handleKeyboard() {
       if (c == ',') { gAutoScroll = false; if (scrollTop > 0) scrollTop--; return; }
       if (c == '.') { gAutoScroll = false; if (scrollTop + VIS < (int)replyLines.size()) scrollTop++; return; }
       if (c == '[') { gAutoScene = false; gSceneIdx = (gSceneIdx + Scenes::count() - 1) % Scenes::count();
-                      setReply(std::string("场景：") + Scenes::name(gSceneIdx)); return; }
+                      submitSceneJob(gSceneIdx); return; }
       if (c == ']') { gAutoScene = false; gSceneIdx = (gSceneIdx + 1) % Scenes::count();
-                      setReply(std::string("场景：") + Scenes::name(gSceneIdx)); return; }
-      if (c == '\\') { gAutoScene = true; gSceneIdx = Scenes::autoIdx(curHour());
-                       setReply("场景：跟随作息自动切"); return; }
+                      submitSceneJob(gSceneIdx); return; }
+      if (c == '\\\\') { gAutoScene = true; gSceneIdx = Scenes::autoIdx(curHour());
+                       submitSceneJob(gSceneIdx); return; }
       if (c == 'q' || c == 'Q') {  // 退出回 launcher(二次确认,防手滑重启)
         static uint32_t armUntil = 0;
         if (millis() < armUntil) { setReply("退出中…回到 launcher"); render();
@@ -611,6 +633,18 @@ void loop() {
     }
   }
 
+  // 切场景主动话(独立通道, 不覆盖聊天回复): 只在空闲且无未显示聊天回复时显示
+  if (gSceneSeq != gLastSceneSeq) {
+    std::string sc;
+    xSemaphoreTake(gMtx, portMAX_DELAY);
+    sc = gSceneReply; gLastSceneSeq = gSceneSeq;
+    xSemaphoreGive(gMtx);
+    if (!sc.empty() && gResSeq == gLastSeq) {   // 无待显示聊天回复才显示(避免覆盖)
+      setReply(sc);
+      Tunes::reply();
+    }
+  }
+
   // 长回复自动滚动:逐行滚动,慢速;滚到底回到顶部循环,直到用户手动滚动/新输入
   if (gAutoScroll) {
     if (now >= gAutoScrollNext) {
@@ -662,7 +696,7 @@ void loop() {
       bool boot = gBootPro;
       gBootPro = false;
       if (Hub::fetchProactive(gProMsg, sizeof(gProMsg), boot)) {
-        setReply(std::string("克劳德：") + gProMsg);   // 显示主动消息
+        setReply(gProMsg);   // 显示主动消息
         if (millis() > gProRingUntil) {               // 三连音提醒(冷却防反复)
           ringProactive();
           gProRingUntil = millis() + 15000;

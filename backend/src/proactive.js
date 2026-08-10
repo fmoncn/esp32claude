@@ -51,9 +51,12 @@ export async function proactiveMessage(petId, boot = false) {
     let hint = '';
     if (talkHub) {
       const verb = boot ? '开机了,先向主人汇报' : '想起可以提一句';
-      hint = `【${verb}今天的行情/额度】你记得今天的 hub 数据: ${hub}\n像朋友随口自然地说(别显得在念数据,别堆砌数字)。`;
+      // 明确额度方向: 摘要里"已用X%"是已消耗, 剩(100-X)%, 防止模型说反方向
+      const m = hub.match(/额度已用(\d+)%/);
+      const dir = m ? hub.replace(/额度已用\d+%/, `额度已用${m[1]}%(剩${100 - Number(m[1])}%)`) : hub;
+      hint = `【${verb}今天的行情/额度】你记得今天的 hub 数据: ${dir}\n像朋友随口自然地说(别显得在念数据,别堆砌数字)。`;
     } else {
-      hint = '自然地打个招呼、起个轻松话题(不要说"去逛公园"这类)。';
+      hint = '自然地打个招呼、起个轻松话题(绝对不要提"逛公园/散步"这类,别聊天气,就说点实在的)。';
     }
     const r = await chatAsPet(
       `${system}\n\n你正在主动找主人说话(主人空闲中)。请像关心朋友一样主动开口。`,

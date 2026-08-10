@@ -278,4 +278,28 @@ inline bool fetchProactive(char* msg, size_t n, bool boot = false) {
   return true;
 }
 
+// 切场景主动: 拉后端 /scene/:id/:idx, 克劳德聊该场景左上角 hub 卡片信息。
+// 返回 true 表示有主动话(已存入 msg), false 表示无数据/出错。
+// 省内存: 复用静态缓冲, 不堆分配。
+inline bool fetchSceneGreet(char* msg, size_t n, int sceneIdx) {
+  if (WiFi.status() != WL_CONNECTED) return false;
+  WiFiClient client; HTTPClient http;
+  char url[80];
+  snprintf(url, sizeof(url), "http://%s:8787/scene/girl/%d", DELL_HOST, sceneIdx);
+  if (!http.begin(client, url)) return false;
+  http.setTimeout(8000);   // 切场景要调后端 LLM, 给足时间(一般2-5秒)
+  int code = http.GET();
+  if (code != 200) { http.end(); return false; }
+  std::string body = http.getString().c_str();
+  http.end();
+  if (body.empty()) return false;
+  JsonDocument d;
+  if (deserializeJson(d, body)) return false;
+  if (!(d["has"] | false)) return false;
+  const char* m = d["message"] | "";
+  if (!m[0]) return false;
+  snprintf(msg, n, "%s", m);
+  return true;
+}
+
 }  // namespace Hub

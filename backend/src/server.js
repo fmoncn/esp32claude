@@ -4,6 +4,7 @@ import { loadPet } from './store.js';
 import { describeState } from './pet.js';
 import { respondToPet } from './brain.js';
 import { proactiveMessage } from './proactive.js';
+import { sceneGreet } from './scene.js';
 import { translateText } from './llm.js';
 
 const app = express();
@@ -73,6 +74,18 @@ app.get('/proactive/:id', async (req, res) => {
   } catch (err) {
     console.error('[/proactive] error:', err.message);
     res.json({ has: false });  // 出错时不打扰,静默
+  }
+});
+
+// 切场景主动: 用户切场景时, 克劳德聊该场景左上角 hub 卡片信息
+app.get('/scene/:id/:idx', async (req, res) => {
+  try {
+    const idx = Number(req.params.idx) || 0;
+    const out = await sceneGreet(req.params.id, idx);
+    res.json(out);  // { has:false } 表示无数据/出错; { has:true, message } 表示克劳德的话
+  } catch (err) {
+    console.error('[/scene] error:', err.message);
+    res.json({ has: false });
   }
 });
 

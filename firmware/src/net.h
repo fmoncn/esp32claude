@@ -70,7 +70,8 @@ inline int fetchIntimacy() {
   http.end(); return iv;
 }
 
-inline bool wifiConnect(uint32_t timeoutMs = 12000) {
+inline bool wifiConnect(uint32_t timeoutMs = 10000) {
+  uint32_t t0w = millis();
   WiFi.mode(WIFI_STA);
   WiFi.setAutoReconnect(true);  // 开启底层自动重连
   WiFi.persistent(true);
@@ -78,8 +79,9 @@ inline bool wifiConnect(uint32_t timeoutMs = 12000) {
   const char* ssids[] = { WIFI_SSID, WIFI2_SSID };
   const char* pwds[] = { WIFI_PASSWORD, WIFI2_PASSWORD };
   // 先限时扫描选信号最强的匹配 BSSID(mesh 多节点固定连最强, 避免连到弱/远节点)
-  // scanNetworks 第4参数限制每信道扫描毫秒数 → 比默认快很多, 且能选强节点
-  int n = WiFi.scanNetworks(false, false, false, 200);
+  // 被动扫描(passive=true)+ 50ms/信道 → 扫描更快(主动扫描实测 5.6s 太慢)
+  int n = WiFi.scanNetworks(false, false, true, 50);
+  Serial.printf("[WIFI] scan done n=%d (took %u ms)\n", n, millis() - t0w);
   String bestBssid[2] = {"", ""}; int bestRssi[2] = {-999, -999}; int bestCh[2] = {0, 0};
   for (int i = 0; i < n; i++) {
     for (int k = 0; k < 2; k++) {
@@ -97,8 +99,8 @@ inline bool wifiConnect(uint32_t timeoutMs = 12000) {
       WiFi.begin(ssids[k], pwds[k]);
     }
     uint32_t t0 = millis();
-    uint32_t wait = (k == 0) ? (timeoutMs / 2) : (timeoutMs / 3);  // 主SSID等久一点
-    while (WiFi.status() != WL_CONNECTED && millis() - t0 < wait) delay(100);
+    uint32_t wait = (k == 0) ? 5000 : 3000;   // 主SSID等5s, 备用3s(扫描已选强节点, 连接快)
+    while (WiFi.status() != WL_CONNECTED && millis() - t0 < wait) delay(50);
     if (WiFi.status() == WL_CONNECTED) {
       Serial.printf("[WIFI] 已连接 %s 信号=%d dBm BSSID=%s ch=%d\n",
         WiFi.SSID().c_str(), WiFi.RSSI(), WiFi.BSSIDstr().c_str(), WiFi.channel());

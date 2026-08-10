@@ -51,7 +51,7 @@ function formatSummary(indices, quota, services, previews) {
     parts.push(`四指数:${moves}`);
   }
   if (quota && quota['7d']) {
-    parts.push(`Claude 7天额度剩${quota['7d'].pct}%`);
+    parts.push(`Claude 7天额度已用${quota['7d'].pct}%`);
   }
   // 项目动态: 从 previews 提取各项目最近一条活动(如 yts 同步了"龙之家族第三季")
   const nameMap = {};
