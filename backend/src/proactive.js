@@ -3,7 +3,7 @@ import { loadPet, savePet } from './store.js';
 import { createPet, withDecay } from './pet.js';
 import { buildSystemPrompt } from './persona.js';
 import { chatAsPet } from './llm.js';
-import { recordDailyHub, recentHubFact } from './hublog.js';
+import { pickNewsTopic } from './newslog.js';
 
 // 主动对话: 克劳德根据空闲时长 + 聊天记忆主动找主人说话。
 // 频率控制: 距上次交互 > IDLE_MIN 分钟 + 距上次主动 > COOLDOWN_MIN 分钟。
@@ -39,22 +39,17 @@ export async function proactiveMessage(petId, boot = false) {
   let text = '';
   const topics = (pet.facts || []).slice(-MAX_FACTS);
 
-  // 记录当天的 hub 数据(每天一次), 让克劳德"记住"行情/额度
-  let hubToday = null;
-  try { hubToday = await recordDailyHub(petId); } catch (e) { /* 拉取失败不阻塞 */ }
-  // 今天记录的 hub 摘要(优先用刚记录的, 否则从记忆里找最近的)
-  const hub = hubToday || recentHubFact(pet);
-  // 主动只聊 hub 数据(开机每次必聊; 日常主动也 hub 优先), 不闲聊记忆里的琐事(如逛公园)
-  const talkHub = boot ? Boolean(hub) : Boolean(hub && Math.random() < 0.7);
+  // 从 paseo News 挑一条关注推文/书签话题(替换原来的 hub 数据)
+  let newsTopic = null;
+  try { newsTopic = await pickNewsTopic(); } catch (e) { /* 读取失败不阻塞 */ }
+  // 主动聊 news(开机每次必聊; 日常主动也 news 优先), 不闲聊记忆里的琐事
+  const talkNews = boot ? Boolean(newsTopic) : Boolean(newsTopic && Math.random() < 0.7);
   try {
     const system = buildSystemPrompt(pet);
     let hint = '';
-    if (talkHub) {
+    if (talkNews) {
       const verb = boot ? '开机了,先向主人汇报' : '想起可以提一句';
-      // 明确额度方向: 摘要里"已用X%"是已消耗, 剩(100-X)%, 防止模型说反方向
-      const m = hub.match(/额度已用(\d+)%/);
-      const dir = m ? hub.replace(/额度已用\d+%/, `额度已用${m[1]}%(剩${100 - Number(m[1])}%)`) : hub;
-      hint = `【${verb}今天的行情/额度】你记得今天的 hub 数据: ${dir}\n像朋友随口自然地说(别显得在念数据,别堆砌数字)。`;
+      hint = `【${verb}关注/收藏里的一条 news】你刷到了这个: ${newsTopic}\n像朋友随口聊聊这条,给点你的看法或好奇心(别显得在念内容,别堆砌)。`;
     } else {
       hint = '自然地打个招呼、起个轻松话题(绝对不要提"逛公园/散步"这类,别聊天气,就说点实在的)。';
     }
@@ -67,7 +62,7 @@ export async function proactiveMessage(petId, boot = false) {
   } catch (e) {
     text = '';
   }
-  if (!text.trim()) text = boot ? '开机啦,今天行情/额度都记着呢,想听哪块?' : timeGreeting(new Date().getHours());
+  if (!text.trim()) text = boot ? '开机啦,刚看到关注里有点东西,想聊两句吗?' : timeGreeting(new Date().getHours());
 
   // 记录主动时间,控制下次频率
   pet.lastProactive = now;
