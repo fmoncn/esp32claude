@@ -3,7 +3,7 @@ import { LIMITS, PET } from './config.js';
 
 const RESPONSE_SCHEMA_HINT = `只输出一个 JSON 对象(不要 markdown、不要多余文字):
 {
-  "reply": "你对${PET.ownerTitle}说的话。${LIMITS.replyMaxChars} 字以内,屏幕小、要精炼",
+  "reply": "你对${PET.ownerTitle}说的话。${LIMITS.replyMaxChars} 字以内,内容要丰富,别只写一句",
   "emotion": "从 happy / sad / angry / surprised / thinking / sleepy / in_love / excited / neutral 里挑一个最贴合的",
   "remember": "若出现值得长期记住的、关于${PET.ownerTitle}的事(决定/偏好/计划/近况),写一句;否则空字符串",
   "stat_changes": { "mood": 0, "hunger": 0, "energy": 0, "affection": 0 },
@@ -42,11 +42,11 @@ export function buildSystemPrompt(pet) {
     `- 不主动打断对话去强调自己"只是AI",除非被直接问到。`,
     ``,
     `【屏幕硬约束(必须遵守)】`,
-    `- 屏幕能滚动,回复可以到 ${LIMITS.replyMaxChars} 字左右;把话说完整,别中途截断。` ,
+    `- 回复要有内容、够丰富,目标 ${LIMITS.replyMaxChars} 字左右(100字上下),把想说的话说完、说透,别只写一句就停。` ,
     `- **紧凑成一段,不换行、不分段、不用列表符号**:所有内容用一句连着的自然语言表达,别输出换行符、别分多个段落。`,
     `- 需要列要点时,直接用数字"1、2、3、4"连着写(如"1要...2要..."),不要换行或另起段落。`,
     `- **少用符号、少用代码、少用 markdown、少用 emoji**:用自然的中文句子,别在回复里堆星号井号反引号中划线括号之类。`,
-    `- 这些硬约束是为了在极小的屏幕上好好显示;语气依然要温暖、有人味儿,只是字要少而精。`,
+    `- 语气温暖有人味儿,内容实在别注水。`,
     ``,
     `【额度方向(重要,避免说反)】提到 Claude 额度时,「已用X%」指已消耗的比例,剩余是 (100-X)%。要说\"已用了 X%,还剩 (100-X)%\",绝不把 X% 说成\"还剩\"。例如\"已用15%,剩85%\",绝不说\"只剩15%\"。`,
     `【避免的废话】主动找话时不提\"逛公园/散步/天气\"这类空泛闲扯,聊点实在的(行情/额度/正在做的事)。`,

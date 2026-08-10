@@ -113,7 +113,7 @@ static void setReply(const std::string& t) {
   if ((int)replyLines.size() > VIS) {
     gAutoScroll = true;
     gAutoScrollTarget = (int)replyLines.size() - VIS;
-    gAutoScrollNext = millis() + 6000;  // 第一屏停留 6 秒看清再开始滚
+    gAutoScrollNext = millis() + 2000;  // 第一屏停留 2 秒看清再开始滚
   } else { gAutoScroll = false; }
 }
 static void setTransient(const char* a, uint32_t ms) { transientAction = a; transientUntil = millis() + ms; }
@@ -656,11 +656,11 @@ void loop() {
     }
   }
 
-  // 长回复自动滚动:逐行滚动,慢速;滚到底回到顶部循环,直到用户手动滚动/新输入
+  // 长回复自动滚动:逐行滚动,中等速度;滚到底回到顶部循环,直到用户手动滚动/新输入
   if (gAutoScroll) {
     if (now >= gAutoScrollNext) {
-      if (scrollTop < gAutoScrollTarget) { scrollTop++; gAutoScrollNext = now + 6000; }
-      else { scrollTop = 0; gAutoScrollNext = now + 6000; }  // 滚到底→回到顶部循环
+      if (scrollTop < gAutoScrollTarget) { scrollTop++; gAutoScrollNext = now + 1500; }
+      else { scrollTop = 0; gAutoScrollNext = now + 4000; }  // 滚到底稍停再回顶部循环
     }
   }
 
