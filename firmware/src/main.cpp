@@ -190,7 +190,7 @@ static void render() {
     }
   } else if (!input.empty()) {
     // 输入显示 2 行(长输入自动换行);光标一闪一闪(终端风格);前缀显示中/EN 模式
-    canvas.setTextColor(0xD3AB, 0x08A4);   // Claude橙
+    canvas.setTextColor(0xF7DE, 0x08A4);   // 输入=暖白(晚上清晰)
     std::string prompt = gTranslate ? "译> " : (gInputMode ? "中> " : "EN> ");
     auto ilines = wrapLines(prompt + input, BARW);
     if (ilines.empty()) ilines.push_back(prompt);
@@ -202,13 +202,24 @@ static void render() {
       }
     }
   } else {
-    // 回复始终显示满 VIS 行(不因建议菜单压缩, 长回复靠滚动看完)
+    // 回复显示满 VIS 行。第一行: 名字前缀用亮黄高亮, 内容用暖白(晚上清晰不刺眼)。
+    const std::string namePre = petName + "：";
     for (int i = 0; i < VIS; i++) {
       int li = scrollTop + i;
       if (li < 0 || li >= (int)replyLines.size()) break;
-      canvas.setTextColor(0xFC4B, 0x08A4);  // 回复全部统一亮橙(名字前缀已在第0行wrapLines拼入)
-      canvas.setCursor(4, BAR_Y + i * LH);
-      canvas.print(replyLines[li].c_str());
+      const std::string& line = replyLines[li];
+      if (i == 0 && li == 0 && line.compare(0, namePre.size(), namePre) == 0) {
+        // 第一行: 名字前缀亮黄, 剩余暖白
+        canvas.setTextColor(0xFFE0, 0x08A4);   // 名字=亮黄
+        canvas.setCursor(4, BAR_Y + i * LH);
+        canvas.print(namePre.c_str());
+        canvas.setTextColor(0xF7DE, 0x08A4);   // 内容=暖白(最高对比, 晚上柔和)
+        canvas.print(line.c_str() + namePre.size());
+      } else {
+        canvas.setTextColor(0xF7DE, 0x08A4);   // 其余行=暖白
+        canvas.setCursor(4, BAR_Y + i * LH);
+        canvas.print(line.c_str());
+      }
     }
     if (scrollTop > 0) canvas.fillTriangle(232, BAR_Y + 2, 236, BAR_Y + 2, 234, BAR_Y - 2, 0x7BCF);
     if (scrollTop + VIS < (int)replyLines.size())
@@ -220,7 +231,7 @@ static void render() {
     // 思考中: 三个动态省略号(循环 . .. ...) 显示等待
     static const char* dots[3] = {".", "..", "..."};
     int d = (millis() / 400) % 3;
-    canvas.setTextColor(0xD3AB, 0x08A4);  // Claude橙
+    canvas.setTextColor(0xF7DE, 0x08A4);  // 暖白(晚上清晰)
     canvas.setCursor(4, BAR_Y);
     canvas.print("克劳德思考中");
     canvas.print(dots[d]);
