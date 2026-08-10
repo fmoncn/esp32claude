@@ -3,6 +3,7 @@ import { loadPet, savePet } from './store.js';
 import { createPet, withDecay } from './pet.js';
 import { buildSystemPrompt } from './persona.js';
 import { chatAsPet } from './llm.js';
+import { recordDailyHub, recentHubFact } from './hublog.js';
 
 // 主动对话: 克劳德根据空闲时长 + 聊天记忆主动找主人说话。
 // 频率控制: 距上次交互 > IDLE_MIN 分钟 + 距上次主动 > COOLDOWN_MIN 分钟。
@@ -34,11 +35,24 @@ export async function proactiveMessage(petId) {
   // 尝试用 LLM 从记忆挑话题(克劳德更贴合);失败回退时段问候
   let text = '';
   const topics = (pet.facts || []).slice(-MAX_FACTS);
+
+  // 记录当天的 hub 数据(每天一次), 让克劳德"记住"行情/额度
+  let hubToday = null;
+  try { hubToday = await recordDailyHub(petId); } catch (e) { /* 拉取失败不阻塞 */ }
+  // 今天记录的 hub 摘要(优先用刚记录的, 否则从记忆里找最近的)
+  const hub = hubToday || recentHubFact(pet);
+  // 主动对话偶尔聊 hub 行情/额度(约 30% 概率, 且当天有 hub 数据时)
+  const talkHub = hub && Math.random() < 0.3;
   try {
     const system = buildSystemPrompt(pet);
-    const hint = topics.length
-      ? `【你记得主人这些事,挑一件自然提起】\n${topics.map((f) => `- ${f}`).join('\n')}`
-      : '主人今天还没怎么聊,自然地打个招呼、起个轻松话题。';
+    let hint = '';
+    if (talkHub) {
+      hint = `【你可以提一句今天的行情/额度】你记得今天的 hub 数据: ${hub}\n像朋友随口关心一句(注意别显得在念数据)。`;
+    } else if (topics.length) {
+      hint = `【你记得主人这些事,挑一件自然提起】\n${topics.map((f) => `- ${f}`).join('\n')}`;
+    } else {
+      hint = '主人今天还没怎么聊,自然地打个招呼、起个轻松话题。';
+    }
     const r = await chatAsPet(
       `${system}\n\n你正在主动找主人说话(主人空闲中)。请像关心朋友一样主动开口。`,
       pet.shortTerm.slice(-4),

@@ -435,7 +435,13 @@ static void handleKeyboard() {
         Radio::reconnect();
       } else if (c == 'n' || c == 'N') {  // 切换电台(循环)
         Radio::nextStation();
+      } else if (c >= '1' && c <= '4') {  // 数字键1-4: 快速选台
+        Radio::selectStation(c - '1');
       }
+    }
+    // OK 键(enter): 播放/暂停(handleKeyboard 已边沿检测, 只在按下瞬间触发一次)
+    if (st.enter) {
+      Radio::togglePlayPause();
     }
     return;
   }

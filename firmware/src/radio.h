@@ -59,6 +59,25 @@ inline void nextStation() {
   audio.stopSong();
   audio.connecttohost(STATIONS[gStationIdx].url);
 }
+// 直接选择电台(数字键 1-N), 停止当前并连选中台
+inline void selectStation(int idx) {
+  if (idx < 0 || idx >= NUM_STATIONS) return;
+  gStationIdx = idx;
+  gStationName[0] = 0; gTitle[0] = 0;
+  audio.stopSong();
+  audio.connecttohost(STATIONS[gStationIdx].url);
+}
+// 播放/暂停(OK键): 暂停=停止, 恢复=重连当前台
+inline void togglePlayPause() {
+  if (audio.isRunning()) {
+    audio.stopSong();
+    gPlaying = false;
+  } else {
+    gPlaying = true;
+    audio.connecttohost(STATIONS[gStationIdx].url);
+  }
+}
+inline bool isPlaying() { return gPlaying; }
 
 // 库回调(在音频库任务执行, 只存数据不渲染)
 void audio_showstation(const char* info) {
@@ -173,8 +192,9 @@ inline void draw() {
       d.fillRect(4, y, 232, ROW_H - 2, BG);   // 清该行
       char buf[40];
       if (i == gStationIdx) {
-        snprintf(buf, sizeof(buf), ">>> %s 播放中", STATIONS[i].name);
-        d.setTextColor(0xFC4B, BG);   // 播放中=亮橙高亮
+        if (gPlaying) snprintf(buf, sizeof(buf), ">>> %s 播放中", STATIONS[i].name);
+        else          snprintf(buf, sizeof(buf), ">>> %s 已暂停", STATIONS[i].name);
+        d.setTextColor(0xFC4B, BG);   // 当前台=亮橙高亮
       } else {
         snprintf(buf, sizeof(buf), "%d %s", i + 1, STATIONS[i].name);
         d.setTextColor(0xD3AB, BG);   // 非播放=灰
@@ -184,7 +204,7 @@ inline void draw() {
     // 分隔线(列表末尾下方) + 底部提示
     int sepY = LIST_Y + NUM_STATIONS * ROW_H + 2;
     d.drawFastHLine(0, sepY, 240, 0x39C7);
-    d.setTextColor(0x7BCF, BG); d.setCursor(4, 118); d.print("Tab回 N切台 []=音 M静 R连");
+    d.setTextColor(0x7BCF, BG); d.setCursor(4, 118); d.print("1-4选台 OK播放 []=音 Tab回");
     lastStationIdx = gStationIdx;
     lastMuted = gMuted; lastPlaying = gPlaying;
   }
