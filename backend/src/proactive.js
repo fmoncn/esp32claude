@@ -22,15 +22,18 @@ function timeGreeting(hour) {
 }
 
 // 判断是否该主动 + 生成一句主动话。返回 { has:false } 表示此刻不打扰。
-export async function proactiveMessage(petId) {
+// boot=true 表示"开机主动": 无视空闲/冷却, 每次开机都主动聊当天 hub 数据(不闲聊)。
+export async function proactiveMessage(petId, boot = false) {
   const now = Date.now();
   let pet = (await loadPet(petId)) || createPet(petId);
   pet = withDecay(pet, now);
 
-  // 频率控制: 空闲时长 + 冷却
-  const idleMin = (now - (pet.lastInteraction || now)) / 60000;
-  if (idleMin < IDLE_MIN) return { has: false };          // 主人刚互动过,不打扰
-  if (now - (pet.lastProactive || 0) < COOLDOWN_MIN * 60000) return { has: false };  // 冷却中
+  // 频率控制: 空闲时长 + 冷却(仅非开机模式生效; 开机主动每次开机都聊)
+  if (!boot) {
+    const idleMin = (now - (pet.lastInteraction || now)) / 60000;
+    if (idleMin < IDLE_MIN) return { has: false };          // 主人刚互动过,不打扰
+    if (now - (pet.lastProactive || 0) < COOLDOWN_MIN * 60000) return { has: false };  // 冷却中
+  }
 
   // 尝试用 LLM 从记忆挑话题(克劳德更贴合);失败回退时段问候
   let text = '';
@@ -41,17 +44,16 @@ export async function proactiveMessage(petId) {
   try { hubToday = await recordDailyHub(petId); } catch (e) { /* 拉取失败不阻塞 */ }
   // 今天记录的 hub 摘要(优先用刚记录的, 否则从记忆里找最近的)
   const hub = hubToday || recentHubFact(pet);
-  // 主动对话偶尔聊 hub 行情/额度(约 30% 概率, 且当天有 hub 数据时)
-  const talkHub = hub && Math.random() < 0.3;
+  // 主动只聊 hub 数据(开机每次必聊; 日常主动也 hub 优先), 不闲聊记忆里的琐事(如逛公园)
+  const talkHub = boot ? Boolean(hub) : Boolean(hub && Math.random() < 0.7);
   try {
     const system = buildSystemPrompt(pet);
     let hint = '';
     if (talkHub) {
-      hint = `【你可以提一句今天的行情/额度】你记得今天的 hub 数据: ${hub}\n像朋友随口关心一句(注意别显得在念数据)。`;
-    } else if (topics.length) {
-      hint = `【你记得主人这些事,挑一件自然提起】\n${topics.map((f) => `- ${f}`).join('\n')}`;
+      const verb = boot ? '开机了,先向主人汇报' : '想起可以提一句';
+      hint = `【${verb}今天的行情/额度】你记得今天的 hub 数据: ${hub}\n像朋友随口自然地说(别显得在念数据,别堆砌数字)。`;
     } else {
-      hint = '主人今天还没怎么聊,自然地打个招呼、起个轻松话题。';
+      hint = '自然地打个招呼、起个轻松话题(不要说"去逛公园"这类)。';
     }
     const r = await chatAsPet(
       `${system}\n\n你正在主动找主人说话(主人空闲中)。请像关心朋友一样主动开口。`,
@@ -62,7 +64,7 @@ export async function proactiveMessage(petId) {
   } catch (e) {
     text = '';
   }
-  if (!text.trim()) text = timeGreeting(new Date().getHours());
+  if (!text.trim()) text = boot ? '开机啦,今天行情/额度都记着呢,想听哪块?' : timeGreeting(new Date().getHours());
 
   // 记录主动时间,控制下次频率
   pet.lastProactive = now;

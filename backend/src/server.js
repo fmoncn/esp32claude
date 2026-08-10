@@ -64,9 +64,11 @@ app.post('/chat', async (req, res) => {
 });
 
 // 主动对话: 克劳德根据空闲时长+记忆主动找主人说话(固件轮询拉取)
+// ?boot=1 表示开机主动: 每次开机克劳德主动聊当天 hub 数据(无视空闲/冷却)
 app.get('/proactive/:id', async (req, res) => {
   try {
-    const out = await proactiveMessage(req.params.id);
+    const boot = req.query.boot === '1';
+    const out = await proactiveMessage(req.params.id, boot);
     res.json(out);  // { has:false } 表示此刻不打扰; { has:true, message, emotion } 表示有主动话
   } catch (err) {
     console.error('[/proactive] error:', err.message);

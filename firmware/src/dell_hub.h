@@ -255,12 +255,14 @@ inline bool fetch(int sceneIdx) {
 }
 
 // 主动对话: 拉后端 /proactive 看克劳德是否要主动找主人说话。
+// boot=true 表示开机主动(带 ?boot=1, 后端会无视空闲/冷却直接聊当天 hub 数据)。
 // 返回 true 表示有主动消息(已存入 msg 静态缓冲), false 表示此刻不打扰。
 // 省内存: 只用一块 80 字符静态缓冲, 不堆分配。
-inline bool fetchProactive(char* msg, size_t n) {
+inline bool fetchProactive(char* msg, size_t n, bool boot = false) {
   if (WiFi.status() != WL_CONNECTED) return false;
   WiFiClient client; HTTPClient http;
-  if (!http.begin(client, "http://" DELL_HOST ":8787/proactive/girl")) return false;
+  std::string url = std::string("http://") + DELL_HOST + ":8787/proactive/girl" + (boot ? "?boot=1" : "");
+  if (!http.begin(client, url.c_str())) return false;
   http.setTimeout(8000);
   int code = http.GET();
   if (code != 200) { http.end(); return false; }

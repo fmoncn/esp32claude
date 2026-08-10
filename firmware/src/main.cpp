@@ -45,6 +45,7 @@ static int gAutoScrollTarget = 0;         // 目标滚动位置(底部)
 static uint32_t kbdIgnoreUntil = 0;
 // 主动对话: 克劳德主动找主人说话(轮询后端 /proactive + 三连音提醒)
 static uint32_t gProNext = 0;             // 下次主动轮询时间(每60s)
+static bool gBootPro = false;             // 开机主动标记: 开机后首次轮询用 boot=true 聊hub
 static char gProMsg[80] = {0};            // 主动消息缓冲(省内存:固定80字符)
 static uint32_t gProRingUntil = 0;        // 三连音播报冷却(防反复)
 static bool gSleeping = false;            // 睡眠状态标志(困倦/唤醒音效切换检测)
@@ -258,6 +259,7 @@ void setup() {
     delay(300); gSceneIdx = Scenes::autoIdx(curHour());  // 按作息选初始场景
     setReply("请输入文本...");
     setTransient("waving", 2500);
+    gBootPro = true;  // 开机主动: 首次轮询克劳德主动聊当天 hub 数据
   } else {
     setReply("连不上 WiFi…去 config.h 检查。");
     setTransient("sad", 0xFFFFFFFF);
@@ -656,7 +658,10 @@ void loop() {
   if (WiFi.status() == WL_CONNECTED && millis() > gProNext) {
     gProNext = millis() + 60000;
     if (gPhase == PH_IDLE && STT::state() == STT::STT_IDLE) {  // 空闲才提醒
-      if (Hub::fetchProactive(gProMsg, sizeof(gProMsg))) {
+      // 开机后首次轮询用 boot=true: 克劳德主动聊当天 hub 数据(每次开机都搭讪)
+      bool boot = gBootPro;
+      gBootPro = false;
+      if (Hub::fetchProactive(gProMsg, sizeof(gProMsg), boot)) {
         setReply(std::string("克劳德：") + gProMsg);   // 显示主动消息
         if (millis() > gProRingUntil) {               // 三连音提醒(冷却防反复)
           ringProactive();

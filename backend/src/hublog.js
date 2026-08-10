@@ -1,10 +1,9 @@
-// 克劳德聊 Hub 数据: 每天记录一次右上角 hub 数据(指数行情 + Claude 额度),
-// 存进克劳德记忆(facts), 主动对话时偶尔聊起行情/额度变化。
+// 克劳德聊 Hub 数据: 每天记录一次 Dell Hub 的信息(指数行情 + Claude 额度 +
+// 导航页各项目动态: news/yts/vsm 等), 存进克劳德记忆(facts), 聊天时作为谈资。
 // 数据源: Dell Hub (localhost:4000), 后端同机可直连, 无鉴权。
 import { loadPet, savePet } from './store.js';
 
 const HUB = 'http://localhost:4000';
-const DATA_KEYS = ['5h', '7d'];  // Claude 额度窗口
 
 // 拉取 Dell Hub 的四指数行情。失败返回 null。
 async function fetchIndices() {
@@ -25,8 +24,27 @@ async function fetchQuota() {
   } catch { return null; }
 }
 
-// 生成当天 hub 摘要文本(供克劳德记忆/聊天)。
-function formatSummary(indices, quota) {
+// 拉取导航页服务列表(项目名/描述)。失败返回 []。
+async function fetchServices() {
+  try {
+    const r = await fetch(`${HUB}/api/services`, { signal: AbortSignal.timeout(5000) });
+    if (!r.ok) return [];
+    const s = await r.json();
+    return Array.isArray(s) ? s : [];
+  } catch { return []; }
+}
+
+// 拉取各项目最新动态(最近处理/推送/同步了什么)。失败返回 {}。
+async function fetchPreviews() {
+  try {
+    const r = await fetch(`${HUB}/api/previews`, { signal: AbortSignal.timeout(5000) });
+    if (!r.ok) return {};
+    return await r.json();
+  } catch { return {}; }
+}
+
+// 生成当天 hub 摘要文本(指数 + 额度 + 项目动态)。
+function formatSummary(indices, quota, services, previews) {
   const parts = [];
   if (Array.isArray(indices)) {
     const moves = indices.map((i) => `${i.name}${i.pct >= 0 ? '+' : ''}${i.pct?.toFixed?.(2) ?? i.pct}%`).join(' ');
@@ -35,6 +53,23 @@ function formatSummary(indices, quota) {
   if (quota && quota['7d']) {
     parts.push(`Claude 7天额度剩${quota['7d'].pct}%`);
   }
+  // 项目动态: 从 previews 提取各项目最近一条活动(如 yts 同步了"龙之家族第三季")
+  const nameMap = {};
+  if (Array.isArray(services)) {
+    for (const s of services) if (s && s.id) nameMap[s.id] = s.name || s.id;
+  }
+  const projBits = [];
+  if (previews && typeof previews === 'object') {
+    for (const [id, list] of Object.entries(previews)) {
+      if (!Array.isArray(list) || list.length === 0) continue;
+      const first = list[0] || {};
+      const t = first.t || '';
+      if (!t) continue;
+      const label = nameMap[id] || id;
+      projBits.push(`${label}:${t}`);
+    }
+  }
+  if (projBits.length) parts.push(`项目:${projBits.join('; ')}`);
   if (parts.length === 0) return null;
   const today = new Date();
   const date = `${today.getMonth() + 1}/${today.getDate()}`;
@@ -51,8 +86,10 @@ export async function recordDailyHub(petId) {
   // 今天已记录过(记忆里有今天的 hub 条目) → 不重复
   if (Array.isArray(pet.facts) && pet.facts.some((f) => String(f).includes(tag))) return null;
 
-  const [indices, quota] = await Promise.all([fetchIndices(), fetchQuota()]);
-  const summary = formatSummary(indices, quota);
+  const [indices, quota, services, previews] = await Promise.all([
+    fetchIndices(), fetchQuota(), fetchServices(), fetchPreviews(),
+  ]);
+  const summary = formatSummary(indices, quota, services, previews);
   if (!summary) return null;
 
   pet.facts = Array.isArray(pet.facts) ? pet.facts : [];
