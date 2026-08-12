@@ -31,9 +31,8 @@ static std::string input, reply = "请输入文本...", petName = "克劳德", e
 static std::vector<std::string> replyLines;
 static int scrollTop = 0;
 static uint8_t gBrightness = 50;          // 屏幕亮度 0-255(默认 50);-= 键调
-static uint32_t gIdleSince = 0;           // 最后操作时间(省电调暗计时)
-static bool gShutdownWarned = false;      // 已显示调暗提示
-static bool gDimmed = false;              // 已进入待机调暗(亮度0,等待按键恢复)
+static uint32_t gIdleSince = 0;           // 最后操作时间(省电关机计时)
+static bool gDimmed = false;              // 已进入待机关机(深度睡眠,等待on/off重启)
 static bool gAutoScroll = false;          // 自动滚动中(长回复)
 static uint32_t gAutoScrollNext = 0;      // 下次推进时间
 static int gInputMode = 1;                // 1=中文拼音 0=英文(Shift 切换)
@@ -113,7 +112,7 @@ static void setReply(const std::string& t) {
   if ((int)replyLines.size() > VIS) {
     gAutoScroll = true;
     gAutoScrollTarget = (int)replyLines.size() - VIS;
-    gAutoScrollNext = millis() + 2000;  // 第一屏停留 2 秒看清再开始滚
+    gAutoScrollNext = millis() + 10000;  // 第一屏内容多, 停留 10 秒后再滚
   } else { gAutoScroll = false; }
 }
 static void setTransient(const char* a, uint32_t ms) { transientAction = a; transientUntil = millis() + ms; }
@@ -190,7 +189,7 @@ static void render() {
     }
   } else if (!input.empty()) {
     // 输入显示 2 行(长输入自动换行);光标一闪一闪(终端风格);前缀显示中/EN 模式
-    canvas.setTextColor(0xF7DE, 0x08A4);   // 输入=暖白(晚上清晰)
+    canvas.setTextColor(0xFFFF, 0x08A4);   // 输入=纯白(最易阅读)
     std::string prompt = gTranslate ? "译> " : (gInputMode ? "中> " : "EN> ");
     auto ilines = wrapLines(prompt + input, BARW);
     if (ilines.empty()) ilines.push_back(prompt);
@@ -209,14 +208,14 @@ static void render() {
       if (li < 0 || li >= (int)replyLines.size()) break;
       const std::string& line = replyLines[li];
       if (i == 0 && li == 0 && line.compare(0, namePre.size(), namePre) == 0) {
-        // 第一行: 名字前缀亮黄, 剩余暖白
-        canvas.setTextColor(0xFFE0, 0x08A4);   // 名字=亮黄
+        // 第一行: 名字+内容统一纯白
+        canvas.setTextColor(0xFFFF, 0x08A4);   // 名字=纯白
         canvas.setCursor(4, BAR_Y + i * LH);
         canvas.print(namePre.c_str());
-        canvas.setTextColor(0xF7DE, 0x08A4);   // 内容=暖白(最高对比, 晚上柔和)
+        canvas.setTextColor(0xFFFF, 0x08A4);   // 内容=纯白(最易阅读)
         canvas.print(line.c_str() + namePre.size());
       } else {
-        canvas.setTextColor(0xF7DE, 0x08A4);   // 其余行=暖白
+        canvas.setTextColor(0xFFFF, 0x08A4);   // 其余行=纯白
         canvas.setCursor(4, BAR_Y + i * LH);
         canvas.print(line.c_str());
       }
@@ -231,7 +230,7 @@ static void render() {
     // 思考中: 三个动态省略号(循环 . .. ...) 显示等待
     static const char* dots[3] = {".", "..", "..."};
     int d = (millis() / 400) % 3;
-    canvas.setTextColor(0xF7DE, 0x08A4);  // 暖白(晚上清晰)
+    canvas.setTextColor(0xFFFF, 0x08A4);  // 纯白(最易阅读)
     canvas.setCursor(4, BAR_Y);
     canvas.print("克劳德思考中");
     canvas.print(dots[d]);
@@ -525,6 +524,12 @@ static void handleKeyboard() {
   // ---- 输入分流(中文拼音 / 英文) ----
   for (char c : st.word) {
     if (c == 0x2a || c == 0x08) continue;  // 过滤退格键 HID 值,避免乱码框
+    if (c == '\'') {  // ' 键: 手动循环滚屏(整屏切到下一屏, 到底回第一屏)
+      if (scrollTop + VIS < (int)replyLines.size()) scrollTop += VIS;
+      else scrollTop = 0;   // 到底→回第一屏
+      gAutoScroll = false;
+      continue;
+    }
     if (c == 0x00 || c == 0x60) {  // Esc 键 或 `(反引号)键 → 退出回 launcher (0x60=`ASCII, 0x35是数字5勿拦截)
       setReply("退出中…回到 launcher"); render();
       bootBackToLauncher();
@@ -596,11 +601,13 @@ static void checkIdleDim() {
   uint32_t now = millis();
   const uint32_t IDLE_MS = 3600000UL;      // 60 分钟
   if (now - gIdleSince < IDLE_MS) return;  // 仍在活跃期内
-  if (gDimmed) return;                      // 已调暗,等待按键恢复
-  // 超过 60 分钟: 亮度降为 0(省电), 不关机
+  if (gDimmed) return;                      // 已关机,等待 on/off 重启
+  // 超过 60 分钟无操作: 关机(深度睡眠, 超低功耗)。拨 on/off 开关(触发 RST)重新开机。
   gDimmed = true;
-  gShutdownWarned = true;
-  M5Cardputer.Display.setBrightness(0);
+  Serial.println("[IDLE] 60min no input, shutting down...");
+  delay(200);                               // 等日志输出
+  esp_deep_sleep_start();                   // 深度睡眠, on/off 唤醒
+  // (不会返回)
 }
 
 void loop() {
@@ -656,11 +663,15 @@ void loop() {
     }
   }
 
-  // 长回复自动滚动:逐行滚动,中等速度;滚到底回到顶部循环,直到用户手动滚动/新输入
+  // 长回复自动滚动: 整屏切换(一次跳 VIS 行, 显示一个完整屏), 第一屏后每屏停 8 秒 → 循环
   if (gAutoScroll) {
     if (now >= gAutoScrollNext) {
-      if (scrollTop < gAutoScrollTarget) { scrollTop++; gAutoScrollNext = now + 1500; }
-      else { scrollTop = 0; gAutoScrollNext = now + 4000; }  // 滚到底稍停再回顶部循环
+      if (scrollTop < gAutoScrollTarget) {
+        // 整屏跳: 直接切到下一屏(跳 VIS 行), 不逐行滚
+        scrollTop += VIS;
+        if (scrollTop > gAutoScrollTarget) scrollTop = gAutoScrollTarget;  // 不超过底部
+        gAutoScrollNext = now + 8000;
+      } else { scrollTop = 0; gAutoScrollNext = now + 8000; }  // 到底→回第一屏循环
     }
   }
 

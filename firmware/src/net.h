@@ -78,9 +78,9 @@ inline bool wifiConnect(uint32_t timeoutMs = 10000) {
   // 多 WiFi: 主路由器优先, 失败试备用热点
   const char* ssids[] = { WIFI_SSID, WIFI2_SSID };
   const char* pwds[] = { WIFI_PASSWORD, WIFI2_PASSWORD };
-  // 先限时扫描选信号最强的匹配 BSSID(mesh 多节点固定连最强, 避免连到弱/远节点)
-  // 被动扫描(passive=true)+ 50ms/信道 → 扫描更快(主动扫描实测 5.6s 太慢)
-  int n = WiFi.scanNetworks(false, false, true, 50);
+  // 主动扫描(非 passive)选信号最强的匹配 BSSID: 能扫到所有 mesh 节点,
+  // 固定连信号最强节点(信号满格稳定不掉线)。比被动扫描慢(~5s)但信号可靠。
+  int n = WiFi.scanNetworks(false, false, false, 200);
   Serial.printf("[WIFI] scan done n=%d (took %u ms)\n", n, millis() - t0w);
   String bestBssid[2] = {"", ""}; int bestRssi[2] = {-999, -999}; int bestCh[2] = {0, 0};
   for (int i = 0; i < n; i++) {
